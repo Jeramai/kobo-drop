@@ -1,0 +1,6 @@
+{
+  "name": "kobo-drop",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "kv_namespaces": [{ "binding": "BOOKS", "id": "9d52aaa2f9744a87a5df31654a8159bc" }]
+}

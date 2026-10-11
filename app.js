@@ -1,6 +1,5 @@
-const RELAY = "https://ntfy.sh";
-const TOPIC_PREFIX = "kobodrop-";
-const MAX_BYTES = 15 * 1024 * 1024;
+const API = "https://kobo-drop.jeramai.workers.dev";
+const MAX_BYTES = 25 * 1024 * 1024;
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 
 const $ = (id) => document.getElementById(id);
@@ -32,7 +31,7 @@ function showCode() {
   $("kobo-addr").textContent = new URL("k/", location.href).href.replace(/^https?:\/\//, "");
 }
 showCode();
-findHomeTopic();
+findHomeChannel();
 
 $("code-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -82,10 +81,10 @@ async function findHomeIp() {
   return null;
 }
 
-async function findHomeTopic() {
+async function findHomeChannel() {
   const ip = await findHomeIp();
   showWhere(ip);
-  return ip ? `${TOPIC_PREFIX}home-${ip.replaceAll(".", "-")}` : null;
+  return ip ? `home-${ip.replaceAll(".", "-")}` : null;
 }
 
 function showWhere(ip) {
@@ -94,19 +93,11 @@ function showWhere(ip) {
     : "Cannot find this Wi-Fi network. Books go only to Kobos with the code.";
 }
 
-async function publish(topic, init) {
-  const res = await fetch(`${RELAY}/${topic}`, init);
-  if (!res.ok) throw new Error(`The relay refused the book (error ${res.status}). Try again in a minute.`);
-  return res.json();
-}
-
 async function upload(bytes, name) {
-  const codeTopic = TOPIC_PREFIX + code;
-  const homeTopic = await findHomeTopic();
-  const sent = await publish(homeTopic || codeTopic, { method: "PUT", headers: { Filename: name }, body: bytes });
-  if (homeTopic) {
-    await publish(codeTopic, { method: "POST", headers: { Filename: name, Attach: sent.attachment.url } });
-  }
+  const to = [await findHomeChannel(), code].filter(Boolean).join(",");
+  const res = await fetch(`${API}/drop?to=${to}&name=${encodeURIComponent(name)}`, { method: "PUT", body: bytes });
+  if (res.status === 413) throw new Error("This book is larger than 25 MB, which is the limit.");
+  if (!res.ok) throw new Error(`The server refused the book (error ${res.status}). Try again in a minute.`);
 }
 
 function addRow(name) {
@@ -130,13 +121,13 @@ async function send(file) {
     if (!/\.epub$/i.test(file.name)) throw new Error("Only EPUB files can go to the Kobo from here.");
     setState("Converting");
     const bytes = await toKepub(file);
-    if (bytes.length > MAX_BYTES) throw new Error("This book is larger than 15 MB, which is the limit.");
+    if (bytes.length > MAX_BYTES) throw new Error("This book is larger than 25 MB, which is the limit.");
     setState("Sending");
     await upload(bytes, kepubName(file.name));
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     setState(`On the Kobo page, ${time}`, "done");
   } catch (err) {
-    setState(err instanceof TypeError ? "No connection to the relay. Check the internet connection and try again." : err.message, "failed");
+    setState(err instanceof TypeError ? "No connection to the server. Check the internet connection and try again." : err.message, "failed");
   }
 }
 

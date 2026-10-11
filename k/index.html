@@ -40,7 +40,7 @@
     <h1>Books for this Kobo</h1>
     <p class="hint" id="status">Looking for books.</p>
     <div id="list"></div>
-    <p class="foot">Bookmark this page to open it again with one tap. Books stay here for 3 hours.<br>
+    <p class="foot">Bookmark this page to open it again with one tap. Books stay here for 24 hours.<br>
       <span id="network"></span>
       <span id="mode-home">Books from phones and computers on this Wi-Fi appear here by themselves. Away from home? <a href="?enter=1">Use a code</a></span>
       <span id="mode-code" style="display:none">Code <b id="code"></b>. <a href="?reset=1">Remove the code</a></span></p>
@@ -48,11 +48,9 @@
 </div>
 <script>
 (function () {
-  var RELAY = "https://ntfy.sh";
-  var TOPIC_PREFIX = "kobodrop-";
-  var POLL_MS = 4000;
+  var API = "https://kobo-drop.jeramai.workers.dev";
+  var POLL_MS = 8000;
   var IP_REFRESH_MS = 10 * 60 * 1000;
-  var BOOK_LIFETIME_S = 3 * 60 * 60;
 
   function el(id) { return document.getElementById(id); }
 
@@ -111,11 +109,11 @@
     el("code").appendChild(document.createTextNode(code));
   }
 
-  var homeTopic = null;
+  var homeChannel = null;
   var homeChecked = false;
   setTimeout(function () { homeChecked = true; }, 5000);
   function setHome(ip) {
-    homeTopic = TOPIC_PREFIX + "home-" + ip.replace(/\./g, "-");
+    homeChannel = "home-" + ip.replace(/\./g, "-");
     homeChecked = true;
     el("network").innerHTML = "Wi-Fi network <b>" + ip.split(".").slice(2).join(".") + "</b>.";
   }
@@ -180,41 +178,25 @@
   }
 
   function parse(text) {
-    var now = new Date().getTime() / 1000;
     var books = [];
-    var seen = {};
-    var messages = [];
-    var deleted = {};
-    var lines = text.split("\n");
-    for (var i = 0; i < lines.length; i++) {
-      if (!lines[i]) continue;
-      try { messages.push(JSON.parse(lines[i])); } catch (e) {}
+    try { books = JSON.parse(text); } catch (e) {}
+    for (var i = 0; i < books.length; i++) {
+      books[i].time = books[i].time / 1000;
+      books[i].expires = books[i].expires / 1000;
     }
-    for (var k = 0; k < messages.length; k++) {
-      if (messages[k].event === "message_delete") deleted[messages[k].sequence_id] = 1;
-    }
-    for (var n = messages.length - 1; n >= 0; n--) {
-      var msg = messages[n];
-      if (msg.event !== "message" || !msg.attachment || deleted[msg.id] || seen[msg.attachment.url]) continue;
-      var expires = msg.attachment.expires || msg.time + BOOK_LIFETIME_S;
-      if (expires <= now) continue;
-      seen[msg.attachment.url] = 1;
-      books.push({ url: msg.attachment.url, name: msg.attachment.name, time: msg.time, expires: expires });
-    }
-    books.sort(function (a, b) { return b.time - a.time; });
     return books;
   }
 
   function poll() {
-    var topics = [];
-    if (homeTopic) topics.push(homeTopic);
-    if (code) topics.push(TOPIC_PREFIX + code);
-    if (!homeChecked || !topics.length) {
+    var channels = [];
+    if (homeChannel) channels.push(homeChannel);
+    if (code) channels.push(code);
+    if (!homeChecked || !channels.length) {
       el("status").innerHTML = "Looking for books.";
       setTimeout(poll, 1000);
       return;
     }
-    get(RELAY + "/" + topics.join(",") + "/json?poll=1&since=3h", function (text) {
+    get(API + "/list?from=" + channels.join(","), function (text) {
       setTimeout(poll, POLL_MS);
       if (text === null) {
         el("status").innerHTML = "<span class='error'>No connection.</span> Check the Wi-Fi. The page tries again by itself.";
