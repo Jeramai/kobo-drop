@@ -50,8 +50,7 @@
     <p class="foot">Books stay here for 24 hours. Bookmark this page to open it with one tap.
       <span id="network"></span>
       <span id="mode-home">Books from phones and computers on this Wi-Fi appear here by themselves. Away from home? <a href="?enter=1">Use a code</a></span>
-      <span id="mode-code" style="display:none">Code <b id="code"></b>. <a href="?reset=1">Remove the code</a></span>
-      <span id="screen"></span></p>
+      <span id="mode-code" style="display:none">Code <b id="code"></b>. <a href="?reset=1">Remove the code</a></span></p>
   </div>
 </div>
 <script>
@@ -116,8 +115,6 @@
     el("mode-code").style.display = "inline";
     el("code").appendChild(document.createTextNode(code));
   }
-
-  el("screen").appendChild(document.createTextNode("Screen " + window.innerWidth + " px."));
 
   var homeChannel = null;
   var homeChecked = false;
