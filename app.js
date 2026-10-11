@@ -118,19 +118,38 @@ function showWhere(ip) {
     : "Cannot find this Wi-Fi network. Books go only to Kobos with the code.";
 }
 
-function post(url, body, onProgress) {
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function postOnce(url, body, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded);
-    xhr.onerror = () => reject(new Error("No connection to the server. Check the internet connection and try again."));
+    xhr.onerror = () => reject(new HttpError(0, "No connection to the server. Check the internet connection and try again."));
     xhr.onload = () => {
-      if (xhr.status === 413) reject(new Error("This book is larger than 100 MB, which is the limit."));
-      else if (xhr.status >= 300) reject(new Error(`The server refused the book (error ${xhr.status}). Try again in a minute.`));
+      if (xhr.status === 413) reject(new HttpError(413, "This book is larger than 100 MB, which is the limit."));
+      else if (xhr.status >= 300) reject(new HttpError(xhr.status, `The server refused the book (error ${xhr.status}). Try again in a minute.`));
       else resolve(xhr.responseText);
     };
     xhr.send(body);
   });
+}
+
+async function post(url, body, onProgress, attempts = 3) {
+  for (let n = 1; ; n++) {
+    try {
+      return await postOnce(url, body, onProgress);
+    } catch (err) {
+      const retryable = err.status === 0 || err.status >= 500;
+      if (!retryable || n >= attempts) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 1500 * n));
+    }
+  }
 }
 
 function newId() {
