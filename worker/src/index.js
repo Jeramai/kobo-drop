@@ -28,7 +28,7 @@ function channels(param) {
 async function readIndex(env, channel) {
   const now = Date.now();
   const index = (await env.BOOKS.get(`index:${channel}`, "json")) || [];
-  return index.filter((b) => now - b.time < BOOK_TTL_S * 1000);
+  return index.filter((b) => now - b.time < BOOK_TTL_S * 1000 && ID.test(b.id) && b.parts >= 1);
 }
 
 function text(value, max) {
