@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kobo Drop</title>
+<meta name="description" content="Send EPUB books to a Kobo e-reader. They arrive as KEPUB.">
+<meta name="theme-color" content="#E4E5E0">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,750;1,7..72,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Send a book to the Kobo</h1>
+
+  <label class="book" id="drop">
+    <input type="file" id="file" accept=".epub,application/epub+zip" multiple>
+    <span class="book-title">Drop an EPUB here</span>
+    <span class="book-sub">or tap to choose one from this device</span>
+  </label>
+
+  <ol class="sent" id="sent" aria-live="polite"></ol>
+
+  <section class="setup" id="setup">
+    <h2>Set up the Kobo</h2>
+    <p>Do this once. After that, the Kobo shows every book you send here.</p>
+    <ol class="steps">
+      <li>On the Kobo, tap <b>More</b>, then <b>Beta features</b>, then <b>Web browser</b>.</li>
+      <li>Go to <b class="addr" id="kobo-addr"></b></li>
+      <li>Type this code: <b class="code" id="code"></b></li>
+      <li>Bookmark the page, so you can open it again with one tap.</li>
+    </ol>
+    <details class="other-code">
+      <summary>Use a code from another phone or computer</summary>
+      <form id="code-form">
+        <input id="code-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="abcd-efgh" aria-label="Code">
+        <button type="submit">Use this code</button>
+      </form>
+    </details>
+  </section>
+
+  <p class="fine">Books are converted to KEPUB on this device. They then go through <a href="https://ntfy.sh">ntfy.sh</a>, which deletes them after 3 hours. The limit is 15 MB per book.</p>
+</main>
+<script src="wasm_exec.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

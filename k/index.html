@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kobo Drop</title>
+<style>
+  body { margin: 0; background: #fff; color: #000; font-family: Georgia, serif; font-size: 22px; line-height: 1.45; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 28px 40px; }
+  h1 { font-size: 34px; margin: 0 0 18px; }
+  p { margin: 0 0 16px; }
+  .hint { color: #444; }
+  .book { border-top: 2px solid #000; padding: 18px 0; }
+  .book:last-child { border-bottom: 2px solid #000; }
+  .title { font-size: 26px; font-weight: bold; margin-bottom: 12px; word-wrap: break-word; }
+  .btn { display: inline-block; font: inherit; font-size: 24px; font-weight: bold; color: #fff; background: #000; border: 3px solid #000; padding: 14px 26px; text-decoration: none; }
+  .btn.done { color: #000; background: #fff; }
+  .meta { color: #444; font-size: 18px; margin-top: 10px; }
+  input { font: inherit; font-size: 30px; letter-spacing: 3px; width: 260px; padding: 10px 12px; border: 3px solid #000; }
+  form .btn { margin-left: 8px; }
+  .foot { margin-top: 36px; font-size: 18px; color: #444; }
+  .foot a { color: #000; }
+  .error { font-weight: bold; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="enter">
+    <h1>Kobo Drop</h1>
+    <p>Type the code that the phone or computer shows.</p>
+    <form method="get" action="">
+      <input name="c" id="c" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="abcd-efgh">
+      <button class="btn" type="submit">Open</button>
+    </form>
+    <p class="hint" id="enter-error"></p>
+  </div>
+
+  <div id="shelf" style="display:none">
+    <h1>Books for this Kobo</h1>
+    <p class="hint" id="status">Looking for books.</p>
+    <div id="list"></div>
+    <p class="foot">Bookmark this page to open it again with one tap. Books stay here for 3 hours.<br>
+      Code <b id="code"></b>. <a href="?reset=1">Use a different code</a></p>
+  </div>
+</div>
+<script>
+(function () {
+  var RELAY = "https://ntfy.sh";
+  var TOPIC_PREFIX = "kobodrop-";
+  var POLL_MS = 4000;
+
+  function el(id) { return document.getElementById(id); }
+
+  function store(key, value) {
+    try {
+      if (value === undefined) return window.localStorage.getItem(key);
+      if (value === null) window.localStorage.removeItem(key);
+      else window.localStorage.setItem(key, value);
+    } catch (e) {}
+    return value;
+  }
+
+  function normalize(raw) {
+    var chars = String(raw || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return chars.length === 8 ? chars.slice(0, 4) + "-" + chars.slice(4) : null;
+  }
+
+  function param(name) {
+    var m = new RegExp("[?&]" + name + "=([^&#]*)").exec(window.location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : null;
+  }
+
+  if (param("reset")) store("code", null);
+  var typed = param("c");
+  var code = normalize(typed) || (param("reset") ? null : normalize(store("code")));
+
+  if (!code) {
+    if (typed) el("enter-error").innerHTML = "<span class='error'>That code is not right.</span> A code has 8 letters and numbers, like abcd-efgh.";
+    return;
+  }
+  store("code", code);
+  if (typed !== code) {
+    // Put the code in the address, so a bookmark keeps it even if this browser forgets localStorage.
+    window.location.replace(window.location.pathname + "?c=" + code);
+    return;
+  }
+
+  el("enter").style.display = "none";
+  el("shelf").style.display = "block";
+  el("code").appendChild(document.createTextNode(code));
+
+  var downloaded = {};
+  try { downloaded = JSON.parse(store("downloaded") || "{}") || {}; } catch (e) {}
+  var shown = "";
+
+  function timeOf(seconds) {
+    var d = new Date(seconds * 1000);
+    var m = d.getMinutes();
+    return d.getHours() + ":" + (m < 10 ? "0" : "") + m;
+  }
+
+  function render(books) {
+    var key = "";
+    for (var i = 0; i < books.length; i++) key += books[i].id + (downloaded[books[i].id] ? "+" : "-");
+    if (key === shown) return;
+    shown = key;
+
+    var list = el("list");
+    list.innerHTML = "";
+    for (var j = 0; j < books.length; j++) {
+      var b = books[j];
+      var row = document.createElement("div");
+      row.className = "book";
+      var title = document.createElement("div");
+      title.className = "title";
+      title.appendChild(document.createTextNode(b.attachment.name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "")));
+      var link = document.createElement("a");
+      link.className = downloaded[b.id] ? "btn done" : "btn";
+      link.href = b.attachment.url;
+      link.appendChild(document.createTextNode(downloaded[b.id] ? "Download again" : "Download"));
+      link.setAttribute("data-id", b.id);
+      link.onclick = function () {
+        downloaded[this.getAttribute("data-id")] = 1;
+        store("downloaded", JSON.stringify(downloaded));
+        var self = this;
+        setTimeout(function () { shown = ""; self.className = "btn done"; }, 500);
+      };
+      var meta = document.createElement("div");
+      meta.className = "meta";
+      meta.appendChild(document.createTextNode("Sent at " + timeOf(b.time) + ". Available until " + timeOf(b.attachment.expires) + "."));
+      row.appendChild(title);
+      row.appendChild(link);
+      row.appendChild(meta);
+      list.appendChild(row);
+    }
+  }
+
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", RELAY + "/" + TOPIC_PREFIX + code + "/json?poll=1&since=3h", true);
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      setTimeout(poll, POLL_MS);
+      if (xhr.status !== 200) {
+        el("status").innerHTML = "<span class='error'>No connection.</span> Check the Wi-Fi. The page tries again by itself.";
+        return;
+      }
+      var now = new Date().getTime() / 1000;
+      var books = [];
+      var lines = xhr.responseText.split("\n");
+      for (var i = 0; i < lines.length; i++) {
+        if (!lines[i]) continue;
+        var msg;
+        try { msg = JSON.parse(lines[i]); } catch (e) { continue; }
+        if (msg.event === "message" && msg.attachment && msg.attachment.expires > now) books.unshift(msg);
+      }
+      el("status").innerHTML = books.length
+        ? "Tap <b>Download</b>. The book then appears in your library."
+        : "No books yet. Send one from the phone or computer. It appears here by itself.";
+      render(books);
+    };
+    xhr.send();
+  }
+  poll();
+})();
+</script>
+</body>
+</html>

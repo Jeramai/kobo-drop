@@ -1,0 +1,205 @@
+:root {
+  --paper: #E4E5E0;
+  --page: #F3F3EF;
+  --ink: #1C1D1F;
+  --ink-soft: #55575A;
+  --edge: #B9BBB4;
+  --plate: #24533F;
+  --mark: #EFDB6B;
+  --error: #9B2C1F;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Literata", Georgia, serif;
+  font-optical-sizing: auto;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+main {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 3.5rem 16px 4rem;
+}
+
+h1 {
+  font-size: clamp(2.1rem, 8vw, 2.9rem);
+  line-height: 1.08;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  margin: 0 0 2rem;
+  max-width: 12ch;
+}
+
+h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+a { color: var(--plate); }
+
+:focus-visible {
+  outline: 3px solid var(--plate);
+  outline-offset: 3px;
+}
+
+/* The drop target is drawn as a closed book: cover on the left, page edges on the right. */
+.book {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 15rem;
+  padding: 1.75rem 1.75rem 1.5rem 2.75rem;
+  margin-right: 10px;
+  background: var(--page);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px 8px 8px 3px;
+  box-shadow:
+    3px 3px 0 -1px var(--page), 3px 3px 0 0 var(--edge),
+    6px 6px 0 -1px var(--page), 6px 6px 0 0 var(--edge),
+    9px 9px 0 -1px var(--page), 9px 9px 0 0 var(--edge);
+  cursor: pointer;
+}
+
+.book::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 1.1rem;
+  background: var(--plate);
+  border-radius: 1px 0 0 1px;
+}
+
+.book:hover .book-title,
+.book.over .book-title { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
+
+.book.over { background: #FBFBF7; }
+
+.book:focus-within { outline: 3px solid var(--plate); outline-offset: 5px; }
+
+.book input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.book-title {
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.book-sub {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.sent {
+  list-style: none;
+  padding: 0;
+  margin: 2.25rem 0 0;
+}
+
+.sent:empty { display: none; }
+
+.sent li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--edge);
+}
+
+.sent li:first-child { border-top: 1px solid var(--edge); }
+
+.sent .name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.sent .state { color: var(--ink-soft); }
+
+.sent .done .state {
+  color: var(--ink);
+  background: linear-gradient(transparent 55%, var(--mark) 55%);
+  padding: 0 0.15em;
+}
+
+.sent .failed .state { color: var(--error); flex-basis: 100%; }
+
+.setup {
+  margin-top: 3.5rem;
+  padding-top: 1.75rem;
+  border-top: 1.5px solid var(--ink);
+}
+
+.setup > p { margin: 0 0 1rem; color: var(--ink-soft); }
+
+.steps {
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.steps li { margin-bottom: 0.5rem; padding-left: 0.25rem; }
+
+.steps b { font-weight: 600; }
+
+.addr { overflow-wrap: anywhere; }
+
+.code {
+  display: inline-block;
+  font-size: 1.5rem;
+  letter-spacing: 0.08em;
+  padding: 0 0.35rem;
+  background: var(--page);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+}
+
+.other-code { margin-top: 1.25rem; }
+
+.other-code summary {
+  cursor: pointer;
+  color: var(--plate);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.other-code form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.other-code input,
+.other-code button {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border: 1.5px solid var(--ink);
+}
+
+.other-code input { background: var(--page); flex: 1 1 10rem; min-width: 0; }
+
+.other-code button {
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.fine {
+  margin-top: 3rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
