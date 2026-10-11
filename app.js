@@ -238,6 +238,23 @@ function sendAll(files) {
   }
 }
 
+async function takeShared() {
+  if (!new URLSearchParams(location.search).has("shared")) return;
+  history.replaceState(null, "", location.pathname);
+  const cache = await caches.open("kobo-drop-share");
+  const files = [];
+  for (const request of await cache.keys()) {
+    const res = await cache.match(request);
+    const name = decodeURIComponent(res.headers.get("x-name") || "book.epub");
+    files.push(new File([await res.blob()], name));
+    await cache.delete(request);
+  }
+  if (files.length) sendAll(files);
+}
+
+navigator.serviceWorker?.register("sw.js").catch(() => {});
+takeShared();
+
 $("file").addEventListener("change", (e) => {
   sendAll(e.target.files);
   e.target.value = "";
