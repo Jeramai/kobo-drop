@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kobo Drop check</title>
+<style>
+  body { margin: 0; background: #fff; color: #000; font-family: Georgia, serif; font-size: 22px; line-height: 1.45; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 28px 40px; }
+  h1 { font-size: 34px; margin: 0 0 18px; }
+  td { padding: 6px 18px 6px 0; border-bottom: 1px solid #999; vertical-align: top; }
+  .ua { font-size: 16px; word-wrap: break-word; margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Kobo browser check</h1>
+  <p>Take a photo of this page and send it.</p>
+  <table id="t"></table>
+  <p class="ua" id="ua"></p>
+</div>
+<script>
+(function () {
+  var t = document.getElementById("t");
+  function row(name, ok) {
+    var tr = t.insertRow(-1);
+    tr.insertCell(0).appendChild(document.createTextNode(name));
+    tr.insertCell(1).appendChild(document.createTextNode(ok ? "yes" : "NO"));
+  }
+  function has(fn) { try { return !!fn(); } catch (e) { return false; } }
+  row("WebRTC", has(function () { return window.RTCPeerConnection || window.webkitRTCPeerConnection; }));
+  row("WebRTC data channel", has(function () {
+    var P = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+    var pc = new P({ iceServers: [] });
+    var ok = typeof pc.createDataChannel === "function";
+    pc.close();
+    return ok;
+  }));
+  row("WebSocket", has(function () { return window.WebSocket; }));
+  row("EventSource", has(function () { return window.EventSource; }));
+  row("Blob", has(function () { return new Blob(["x"]); }));
+  row("Blob link", has(function () { return (window.URL || window.webkitURL).createObjectURL(new Blob(["x"])); }));
+  row("Download attribute", has(function () { return "download" in document.createElement("a"); }));
+  row("XHR binary", has(function () { var x = new XMLHttpRequest(); x.open("GET", "/"); x.responseType = "arraybuffer"; return x.responseType === "arraybuffer"; }));
+  row("Fetch", has(function () { return window.fetch; }));
+  row("Promise", has(function () { return window.Promise; }));
+  row("localStorage", has(function () { window.localStorage.setItem("t", "1"); return window.localStorage.getItem("t") === "1"; }));
+  document.getElementById("ua").appendChild(document.createTextNode(navigator.userAgent));
+})();
+</script>
+</body>
+</html>
