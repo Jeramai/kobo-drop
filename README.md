@@ -118,6 +118,10 @@ GOOS=js GOARCH=wasm go build -ldflags="-s -w" -trimpath -o ../kepubify.wasm ./cm
 cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" ..
 ```
 
+## License
+
+[MIT](LICENSE): free for everybody to use, change and share. The bundled kepubify is MIT too.
+
 ## Credits
 
 [kepubify](https://github.com/pgaskin/kepubify) by Patrick Gaskin does the conversion
