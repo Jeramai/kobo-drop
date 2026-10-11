@@ -43,7 +43,6 @@ $("code-form").addEventListener("submit", (e) => {
   }
   code = storage("code", next);
   $("code-input").value = "";
-  e.target.closest("details").open = false;
   showCode();
 });
 $("code-input").addEventListener("input", (e) => e.target.setCustomValidity(""));
@@ -68,13 +67,31 @@ async function toKepub(file) {
   return result.data;
 }
 
-async function upload(bytes, name) {
-  const res = await fetch(`${RELAY}/${TOPIC_PREFIX}${code}`, {
-    method: "PUT",
-    headers: { Filename: name },
-    body: bytes,
-  });
+async function findHomeTopic() {
+  try {
+    const { ip } = await (await fetch("https://api4.ipify.org?format=json")).json();
+    if (ip) return `${TOPIC_PREFIX}home-${ip.replaceAll(".", "-")}`;
+  } catch {}
+  try {
+    const ip = (await (await fetch("https://ipv4.icanhazip.com")).text()).trim();
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return `${TOPIC_PREFIX}home-${ip.replaceAll(".", "-")}`;
+  } catch {}
+  return null;
+}
+
+async function publish(topic, init) {
+  const res = await fetch(`${RELAY}/${topic}`, init);
   if (!res.ok) throw new Error(`The relay refused the book (error ${res.status}). Try again in a minute.`);
+  return res.json();
+}
+
+async function upload(bytes, name) {
+  const codeTopic = TOPIC_PREFIX + code;
+  const homeTopic = await findHomeTopic();
+  const sent = await publish(homeTopic || codeTopic, { method: "PUT", headers: { Filename: name }, body: bytes });
+  if (homeTopic) {
+    await publish(codeTopic, { method: "POST", headers: { Filename: name, Attach: sent.attachment.url } });
+  }
 }
 
 function addRow(name) {

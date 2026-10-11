@@ -26,17 +26,19 @@
 
   <section class="setup" id="setup">
     <h2>Set up the Kobo</h2>
-    <p>Do this once. After that, the Kobo shows every book you send here.</p>
+    <p>Do this once. After that, the Kobo shows every book that you send from a phone or computer on the same Wi-Fi.</p>
     <ol class="steps">
       <li>On the Kobo, tap <b>More</b>, then <b>Beta features</b>, then <b>Web browser</b>.</li>
       <li>Go to <b class="addr" id="kobo-addr"></b></li>
-      <li>Type this code: <b class="code" id="code"></b></li>
       <li>Bookmark the page, so you can open it again with one tap.</li>
     </ol>
-    <details class="other-code">
-      <summary>Use a code from another phone or computer</summary>
+    <details class="away">
+      <summary>Send from another Wi-Fi network</summary>
+      <p>On the Kobo page, tap <b>Use a code</b> and type <b class="code" id="code"></b></p>
+      <p>Also use the code if this phone has a VPN or iCloud Private Relay turned on.</p>
       <form id="code-form">
-        <input id="code-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="abcd-efgh" aria-label="Code">
+        <label for="code-input">Code from another phone or computer</label>
+        <input id="code-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="abcd-efgh">
         <button type="submit">Use this code</button>
       </form>
     </details>

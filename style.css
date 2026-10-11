@@ -166,33 +166,37 @@ a { color: var(--plate); }
   border-radius: 4px;
 }
 
-.other-code { margin-top: 1.25rem; }
+.away { margin-top: 1.25rem; }
 
-.other-code summary {
+.away summary {
   cursor: pointer;
   color: var(--plate);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-.other-code form {
+.away p { margin: 0.75rem 0 0; }
+
+.away label { flex-basis: 100%; color: var(--ink-soft); font-size: 0.9375rem; }
+
+.away form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  margin-top: 1.25rem;
 }
 
-.other-code input,
-.other-code button {
+.away input,
+.away button {
   font: inherit;
   padding: 0.5rem 0.75rem;
   border-radius: 4px;
   border: 1.5px solid var(--ink);
 }
 
-.other-code input { background: var(--page); flex: 1 1 10rem; min-width: 0; }
+.away input { background: var(--page); flex: 1 1 10rem; min-width: 0; }
 
-.other-code button {
+.away button {
   background: var(--ink);
   color: var(--paper);
   cursor: pointer;

@@ -25,22 +25,24 @@
 </head>
 <body>
 <div class="wrap">
-  <div id="enter">
-    <h1>Kobo Drop</h1>
-    <p>Type the code that the phone or computer shows.</p>
+  <div id="enter" style="display:none">
+    <h1>Use a code</h1>
+    <p>With a code, this Kobo also gets books from phones and computers on other Wi-Fi. Type the code that the send page shows.</p>
     <form method="get" action="">
       <input name="c" id="c" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="abcd-efgh">
-      <button class="btn" type="submit">Open</button>
+      <button class="btn" type="submit">Use code</button>
     </form>
     <p class="hint" id="enter-error"></p>
+    <p class="foot"><a href="./">Back to the books</a></p>
   </div>
 
-  <div id="shelf" style="display:none">
+  <div id="shelf">
     <h1>Books for this Kobo</h1>
     <p class="hint" id="status">Looking for books.</p>
     <div id="list"></div>
     <p class="foot">Bookmark this page to open it again with one tap. Books stay here for 3 hours.<br>
-      Code <b id="code"></b>. <a href="?reset=1">Use a different code</a></p>
+      <span id="mode-home">Books from phones and computers on this Wi-Fi appear here by themselves. Away from home? <a href="?enter=1">Use a code</a></span>
+      <span id="mode-code" style="display:none">Code <b id="code"></b>. <a href="?reset=1">Remove the code</a></span></p>
   </div>
 </div>
 <script>
@@ -48,6 +50,8 @@
   var RELAY = "https://ntfy.sh";
   var TOPIC_PREFIX = "kobodrop-";
   var POLL_MS = 4000;
+  var IP_REFRESH_MS = 10 * 60 * 1000;
+  var BOOK_LIFETIME_S = 3 * 60 * 60;
 
   function el(id) { return document.getElementById(id); }
 
@@ -70,24 +74,56 @@
     return m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : null;
   }
 
-  if (param("reset")) store("code", null);
-  var typed = param("c");
-  var code = normalize(typed) || (param("reset") ? null : normalize(store("code")));
+  function get(url, done) {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4) done(xhr.status === 200 ? xhr.responseText : null);
+    };
+    xhr.send();
+  }
 
-  if (!code) {
+  if (param("reset")) {
+    store("code", null);
+    window.location.replace(window.location.pathname);
+    return;
+  }
+
+  var typed = param("c");
+  if (param("enter") || (typed && !normalize(typed))) {
+    el("shelf").style.display = "none";
+    el("enter").style.display = "block";
     if (typed) el("enter-error").innerHTML = "<span class='error'>That code is not right.</span> A code has 8 letters and numbers, like abcd-efgh.";
     return;
   }
-  store("code", code);
-  if (typed !== code) {
-    // Put the code in the address, so a bookmark keeps it even if this browser forgets localStorage.
-    window.location.replace(window.location.pathname + "?c=" + code);
-    return;
+
+  var code = normalize(typed) || normalize(store("code"));
+  if (code) {
+    store("code", code);
+    if (typed !== code) {
+      // Put the code in the address, so a bookmark keeps it even if this browser forgets localStorage.
+      window.location.replace(window.location.pathname + "?c=" + code);
+      return;
+    }
+    el("mode-home").style.display = "none";
+    el("mode-code").style.display = "inline";
+    el("code").appendChild(document.createTextNode(code));
   }
 
-  el("enter").style.display = "none";
-  el("shelf").style.display = "block";
-  el("code").appendChild(document.createTextNode(code));
+  var homeTopic = null;
+  function findHome() {
+    get("https://api4.ipify.org?format=json", function (text) {
+      var ip = null;
+      try { ip = JSON.parse(text).ip; } catch (e) {}
+      if (ip) { homeTopic = TOPIC_PREFIX + "home-" + ip.replace(/\./g, "-"); return; }
+      get("https://ipv4.icanhazip.com", function (plain) {
+        var m = /^\s*(\d+\.\d+\.\d+\.\d+)\s*$/.exec(plain || "");
+        if (m) homeTopic = TOPIC_PREFIX + "home-" + m[1].replace(/\./g, "-");
+      });
+    });
+  }
+  findHome();
+  setInterval(findHome, IP_REFRESH_MS);
 
   var downloaded = {};
   try { downloaded = JSON.parse(store("downloaded") || "{}") || {}; } catch (e) {}
@@ -101,7 +137,7 @@
 
   function render(books) {
     var key = "";
-    for (var i = 0; i < books.length; i++) key += books[i].id + (downloaded[books[i].id] ? "+" : "-");
+    for (var i = 0; i < books.length; i++) key += books[i].url + (downloaded[books[i].url] ? "+" : "-");
     if (key === shown) return;
     shown = key;
 
@@ -113,21 +149,20 @@
       row.className = "book";
       var title = document.createElement("div");
       title.className = "title";
-      title.appendChild(document.createTextNode(b.attachment.name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "")));
+      title.appendChild(document.createTextNode(b.name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "")));
       var link = document.createElement("a");
-      link.className = downloaded[b.id] ? "btn done" : "btn";
-      link.href = b.attachment.url;
-      link.appendChild(document.createTextNode(downloaded[b.id] ? "Download again" : "Download"));
-      link.setAttribute("data-id", b.id);
+      link.className = downloaded[b.url] ? "btn done" : "btn";
+      link.href = b.url;
+      link.appendChild(document.createTextNode(downloaded[b.url] ? "Download again" : "Download"));
       link.onclick = function () {
-        downloaded[this.getAttribute("data-id")] = 1;
+        downloaded[this.href] = 1;
         store("downloaded", JSON.stringify(downloaded));
         var self = this;
         setTimeout(function () { shown = ""; self.className = "btn done"; }, 500);
       };
       var meta = document.createElement("div");
       meta.className = "meta";
-      meta.appendChild(document.createTextNode("Sent at " + timeOf(b.time) + ". Available until " + timeOf(b.attachment.expires) + "."));
+      meta.appendChild(document.createTextNode("Sent at " + timeOf(b.time) + ". Available until " + timeOf(b.expires) + "."));
       row.appendChild(title);
       row.appendChild(link);
       row.appendChild(meta);
@@ -135,31 +170,46 @@
     }
   }
 
+  function parse(text) {
+    var now = new Date().getTime() / 1000;
+    var books = [];
+    var seen = {};
+    var lines = text.split("\n");
+    for (var i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i]) continue;
+      var msg;
+      try { msg = JSON.parse(lines[i]); } catch (e) { continue; }
+      if (msg.event !== "message" || !msg.attachment || seen[msg.attachment.url]) continue;
+      var expires = msg.attachment.expires || msg.time + BOOK_LIFETIME_S;
+      if (expires <= now) continue;
+      seen[msg.attachment.url] = 1;
+      books.push({ url: msg.attachment.url, name: msg.attachment.name, time: msg.time, expires: expires });
+    }
+    books.sort(function (a, b) { return b.time - a.time; });
+    return books;
+  }
+
   function poll() {
-    var xhr = new XMLHttpRequest();
-    xhr.open("GET", RELAY + "/" + TOPIC_PREFIX + code + "/json?poll=1&since=3h", true);
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== 4) return;
+    var topics = [];
+    if (homeTopic) topics.push(homeTopic);
+    if (code) topics.push(TOPIC_PREFIX + code);
+    if (!topics.length) {
+      el("status").innerHTML = "Looking for books.";
+      setTimeout(poll, 1000);
+      return;
+    }
+    get(RELAY + "/" + topics.join(",") + "/json?poll=1&since=3h", function (text) {
       setTimeout(poll, POLL_MS);
-      if (xhr.status !== 200) {
+      if (text === null) {
         el("status").innerHTML = "<span class='error'>No connection.</span> Check the Wi-Fi. The page tries again by itself.";
         return;
       }
-      var now = new Date().getTime() / 1000;
-      var books = [];
-      var lines = xhr.responseText.split("\n");
-      for (var i = 0; i < lines.length; i++) {
-        if (!lines[i]) continue;
-        var msg;
-        try { msg = JSON.parse(lines[i]); } catch (e) { continue; }
-        if (msg.event === "message" && msg.attachment && msg.attachment.expires > now) books.unshift(msg);
-      }
+      var books = parse(text);
       el("status").innerHTML = books.length
         ? "Tap <b>Download</b>. The book then appears in your library."
         : "No books yet. Send one from the phone or computer. It appears here by itself.";
       render(books);
-    };
-    xhr.send();
+    });
   }
   poll();
 })();
