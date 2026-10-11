@@ -55,11 +55,6 @@ const converterReady = (async () => {
   go.run(instance);
 })();
 
-function kepubName(name) {
-  const base = name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "");
-  return base + ".kepub.epub";
-}
-
 async function readMeta(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   await converterReady;
@@ -190,7 +185,7 @@ function addRow(name) {
   title.className = "title";
   author.className = "author";
   state.className = "state";
-  title.textContent = name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "");
+  title.textContent = titleFromFileName(name);
   const line = document.createElement("span");
   line.className = "line";
   line.append(state);
@@ -247,31 +242,74 @@ function uploadSlot() {
   });
 }
 
+async function findCover(title, author) {
+  try {
+    const res = await fetch(`${API}/lookup?${new URLSearchParams({ title, author })}`);
+    return res.ok ? await res.blob() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function bookCover(cover, type) {
+  try {
+    const image = await createImageBitmap(new Blob([cover], { type }));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.min(600, image.width);
+    canvas.height = Math.round((image.height / image.width) * canvas.width);
+    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    return new Uint8Array(await blob.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+function finishBook(bytes, book) {
+  if (!book.retitle && !book.embedCover) return bytes;
+  const result = window.epubFinish(bytes, book.retitle ? book.title : "", book.retitle ? book.author : "", book.embedCover);
+  return result.error ? bytes : result.data;
+}
+
 async function preview(file, row) {
-  const meta = await readMeta(file);
-  const thumb = await thumbnail(meta.cover, meta.coverType);
-  row.details(meta, thumb);
-  return { meta, thumb };
+  const read = previewQueue.then(() => readMeta(file));
+  previewQueue = read.catch(() => {});
+  const meta = await read;
+
+  const title = cleanText(meta.title) || titleFromFileName(file.name);
+  const author = cleanText(meta.author);
+  let cover = meta.cover;
+  let coverType = meta.coverType;
+  let embedCover = null;
+  if (!cover) {
+    const found = await findCover(title, author);
+    if (found) {
+      cover = new Uint8Array(await found.arrayBuffer());
+      coverType = found.type;
+      embedCover = await bookCover(cover, coverType);
+    }
+  }
+  const thumb = await thumbnail(cover, coverType);
+  row.details({ title, author }, thumb);
+  return { title, author, thumb, embedCover, retitle: title !== (meta.title || "") || author !== (meta.author || "") };
 }
 
 async function send(file, row) {
   try {
     if (!/\.epub$/i.test(file.name)) throw new Error("Only EPUB files can go to the Kobo from here.");
-    const details = previewQueue.then(() => preview(file, row));
-    previewQueue = details.catch(() => {});
-    const { meta, thumb } = await details;
+    const book = await preview(file, row);
 
     const release = await uploadSlot();
     try {
       row.state("Converting");
-      const bytes = await toKepub(file);
+      const bytes = finishBook(await toKepub(file), book);
       if (bytes.length > MAX_BYTES) throw new Error("This book is larger than 100 MB, which is the limit.");
 
       const form = new FormData();
-      form.append("name", kepubName(file.name));
-      form.append("title", meta.title || "");
-      form.append("author", meta.author || "");
-      if (thumb) form.append("cover", thumb, "cover.jpg");
+      form.append("name", bookFileName(book.title, book.author));
+      form.append("title", book.title);
+      form.append("author", book.author);
+      if (book.thumb) form.append("cover", book.thumb, "cover.jpg");
 
       row.state("Sending");
       const sent = await upload(bytes, form, (part) => row.state(`Sending, ${Math.round(part * 100)}%`));

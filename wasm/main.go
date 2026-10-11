@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"html"
 	"path"
+	"regexp"
 	"strings"
 	"syscall/js"
 
@@ -139,8 +141,91 @@ func meta(this js.Value, args []js.Value) interface{} {
 	return res
 }
 
+var (
+	reTitle    = regexp.MustCompile(`(?s)(<(?:\w+:)?title\b[^>]*>).*?(</(?:\w+:)?title>)`)
+	reCreator  = regexp.MustCompile(`(?s)(<(?:\w+:)?creator\b[^>]*>).*?(</(?:\w+:)?creator>)`)
+	reManifest = regexp.MustCompile(`</(?:\w+:)?manifest>`)
+	reMetadata = regexp.MustCompile(`</(?:\w+:)?metadata>`)
+)
+
+func replaceFirst(re *regexp.Regexp, s, value string) string {
+	done := false
+	return re.ReplaceAllStringFunc(s, func(m string) string {
+		if done {
+			return m
+		}
+		done = true
+		parts := re.FindStringSubmatch(m)
+		return parts[1] + html.EscapeString(value) + parts[2]
+	})
+}
+
+func finish(this js.Value, args []js.Value) interface{} {
+	in := readBytes(args[0])
+	title, author := args[1].String(), args[2].String()
+	var cover []byte
+	if len(args) > 3 && !args[3].IsNull() && !args[3].IsUndefined() {
+		cover = readBytes(args[3])
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(in), int64(len(in)))
+	if err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	var container struct {
+		Rootfiles []struct {
+			Path string `xml:"full-path,attr"`
+		} `xml:"rootfiles>rootfile"`
+	}
+	if xml.Unmarshal(readFile(zr, "META-INF/container.xml"), &container) != nil || len(container.Rootfiles) == 0 {
+		return map[string]interface{}{"data": args[0]}
+	}
+	opfPath := container.Rootfiles[0].Path
+	opf := string(readFile(zr, opfPath))
+	if title != "" {
+		opf = replaceFirst(reTitle, opf, title)
+	}
+	if author != "" {
+		opf = replaceFirst(reCreator, opf, author)
+	}
+	coverPath := path.Join(path.Dir(opfPath), "kobodrop-cover.jpg")
+	if cover != nil {
+		opf = reManifest.ReplaceAllLiteralString(opf, `<item id="kobodrop-cover" href="kobodrop-cover.jpg" media-type="image/jpeg" properties="cover-image"/></manifest>`)
+		opf = reMetadata.ReplaceAllLiteralString(opf, `<meta name="cover" content="kobodrop-cover"/></metadata>`)
+	}
+
+	var out bytes.Buffer
+	zw := zip.NewWriter(&out)
+	for _, f := range zr.File {
+		switch f.Name {
+		case opfPath:
+			w, err := zw.CreateHeader(&zip.FileHeader{Name: f.Name, Method: zip.Deflate, Modified: f.Modified})
+			if err != nil {
+				return map[string]interface{}{"error": err.Error()}
+			}
+			io.WriteString(w, opf)
+		default:
+			if err := zw.Copy(f); err != nil {
+				return map[string]interface{}{"error": err.Error()}
+			}
+		}
+	}
+	if cover != nil {
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: coverPath, Method: zip.Store})
+		if err != nil {
+			return map[string]interface{}{"error": err.Error()}
+		}
+		w.Write(cover)
+	}
+	if err := zw.Close(); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"data": toJS(out.Bytes())}
+}
+
 func main() {
 	js.Global().Set("kepubify", js.FuncOf(guard(convert)))
 	js.Global().Set("epubMeta", js.FuncOf(guard(meta)))
+	js.Global().Set("epubFinish", js.FuncOf(guard(finish)))
 	select {}
 }

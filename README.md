@@ -5,7 +5,7 @@
 <h1 align="center">Kobo Drop</h1>
 
 <p align="center">
-  Send EPUBs from your phone to your Kobo. They arrive as KEPUB, with cover, title and author.<br>
+  Send EPUBs from your phone to your Kobo. They arrive as KEPUB, with a clean title, author and cover.<br>
   No cable, no Calibre, no account.
 </p>
 
@@ -46,6 +46,14 @@ turns, reading statistics, time left in chapter, better fonts and hyphenation. A
 opens in the older Adobe renderer. Kobo Drop runs [kepubify](https://github.com/pgaskin/kepubify)
 in your browser, so every book arrives as KEPUB.
 
+## Clean titles and covers
+
+Books from the internet often carry junk such as `z-library.sk, 1lib.sk` or `(z-lib.org)` in their
+title. Kobo Drop removes it, writes the clean title and author into the book itself (the Kobo
+library reads them from there), and names the file `Author - Title.kepub.epub`. A book without a
+cover gets one from [Open Library](https://openlibrary.org), with Google Books as a fallback, and
+the cover goes into the book too.
+
 ## How it works
 
 ```
@@ -74,13 +82,15 @@ EPUB ─► kepubify (WebAssembly)
 | `k/index.html` | The Kobo page (ES5, inline) |
 | `sw.js`, `manifest.webmanifest` | PWA install and the Android share target |
 | `worker/` | The Cloudflare Worker and its KV binding |
-| `wasm/main.go` | The WebAssembly entry point around kepubify |
+| `names.js` | Title clean-up and file names |
+| `wasm/main.go` | The WebAssembly entry point: kepubify, metadata, and writing title and cover back |
 
 ## Privacy
 
 Books stay on the server for 24 hours, then KV deletes them. You can remove a book earlier from
 either page. There are no accounts, cookies or analytics; the pages do load Literata from Google
-Fonts and ask [ipify](https://www.ipify.org) for your public address. Anyone who knows your channel (your
+Fonts and ask [ipify](https://www.ipify.org) for your public address, and for a book without a
+cover the Worker sends its title and author to Open Library and Google Books. Anyone who knows your channel (your
 public IP address or your code) can see and add books while they are there, so treat the code
 like a house key for a mailbox, not a vault.
 

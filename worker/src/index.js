@@ -98,6 +98,56 @@ async function remove(env, url) {
   return json({ ok: true });
 }
 
+function titleVariants(title) {
+  const variants = [title, title.split(/[:(\[]/)[0], title.replace(/\s*\d+\s*$/, ""), title.split(/[:(\[]/)[0].replace(/\s*\d+\s*$/, "")];
+  return [...new Set(variants.map((t) => t.trim()).filter((t) => t.length > 1))];
+}
+
+async function openLibraryCover(title, author) {
+  for (const t of titleVariants(title)) {
+    const q = new URLSearchParams({ title: t, limit: "5", fields: "cover_i" });
+    if (author) q.set("author", author);
+    const res = await fetch(`https://openlibrary.org/search.json?${q}`, { headers: { "user-agent": "kobo-drop (github.com/Jeramai/kobo-drop)" } });
+    if (!res.ok) continue;
+    const doc = (await res.json()).docs?.find((d) => d.cover_i);
+    if (doc) return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+  }
+  return null;
+}
+
+async function googleBooksCover(title, author) {
+  const q = `intitle:${title}${author ? ` inauthor:${author}` : ""}`;
+  const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5&fields=items(volumeInfo/imageLinks)`);
+  if (!res.ok) return null;
+  const link = (await res.json()).items?.find((i) => i.volumeInfo?.imageLinks)?.volumeInfo.imageLinks;
+  return (link?.thumbnail || link?.smallThumbnail)?.replace(/^http:/, "https:").replace("&edge=curl", "") || null;
+}
+
+async function lookup(url, ctx) {
+  const title = text(url.searchParams.get("title"), 200);
+  const author = text(url.searchParams.get("author"), 120);
+  if (!title) return json({ error: "Missing title." }, 400);
+  const cache = caches.default;
+  const key = new Request(`${url.origin}/lookup?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
+  const hit = await cache.match(key);
+  if (hit) return hit;
+
+  let image = null;
+  for (const find of [openLibraryCover, googleBooksCover]) {
+    const link = await find(title, author).catch(() => null);
+    if (!link) continue;
+    const res = await fetch(link).catch(() => null);
+    const type = res?.headers.get("content-type") || "";
+    if (res?.ok && type.startsWith("image/")) {
+      image = new Response(res.body, { headers: { ...CORS, "content-type": type, "cache-control": "public, max-age=604800" } });
+      break;
+    }
+  }
+  if (!image) return new Response(null, { status: 404, headers: { ...CORS, "cache-control": "public, max-age=86400" } });
+  ctx.waitUntil(cache.put(key, image.clone()));
+  return image;
+}
+
 async function cover(env, id) {
   const body = await env.BOOKS.get(`cover:${id}`, "stream");
   if (!body) return new Response(null, { status: 404, headers: CORS });
@@ -156,13 +206,14 @@ async function download(env, id, parts, name) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const [, route, id, second, third] = url.pathname.split("/");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (request.method === "POST" && route === "part" && id && second) return part(request, env, id, second);
     if (request.method === "POST" && route === "drop") return drop(request, env);
     if (request.method === "GET" && route === "list") return list(env, url);
+    if (request.method === "GET" && route === "lookup") return lookup(url, ctx);
     if (request.method === "POST" && route === "remove") return remove(env, url);
     if (request.method === "GET" && route === "book" && id && second && third) return download(env, id, second, third);
     if (request.method === "GET" && route === "cover" && id) return cover(env, id);
