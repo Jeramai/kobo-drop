@@ -74,11 +74,13 @@ async function thumbnail(cover, type) {
   if (!cover) return null;
   try {
     const image = await createImageBitmap(new Blob([cover], { type }));
-    const width = Math.min(240, image.width);
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = Math.round((image.height / image.width) * width);
-    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+    canvas.width = 240;
+    canvas.height = 360;
+    const scale = Math.max(canvas.width / image.width, canvas.height / image.height);
+    const w = image.width * scale;
+    const h = image.height * scale;
+    canvas.getContext("2d").drawImage(image, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
     return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.8));
   } catch {
     return null;
@@ -199,8 +201,11 @@ async function send(file) {
   }
 }
 
+let queue = Promise.resolve();
+
+// One at a time: the Worker updates each channel list with a read and a write, so parallel sends lose books.
 function sendAll(files) {
-  for (const file of files) send(file);
+  for (const file of files) queue = queue.then(() => send(file));
 }
 
 $("file").addEventListener("change", (e) => {
