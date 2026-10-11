@@ -1,4 +1,5 @@
 const BOOK_TTL_S = 24 * 60 * 60;
+const PART_TTL_S = BOOK_TTL_S + 60 * 60;
 const PART_BYTES = 20 * 1024 * 1024;
 const MAX_PARTS = 5;
 const MAX_COVER_BYTES = 200 * 1024;
@@ -41,7 +42,8 @@ async function part(request, env, id, n) {
   if (Number(request.headers.get("content-length")) > PART_BYTES) return json({ error: "too_large" }, 413);
   const body = await request.arrayBuffer();
   if (body.byteLength === 0 || body.byteLength > PART_BYTES) return json({ error: "too_large" }, 413);
-  await env.BOOKS.put(`part:${id}:${index}`, body, { expirationTtl: BOOK_TTL_S });
+  // The book's 24 hours start at /drop, after the last part, so a part must outlive that.
+  await env.BOOKS.put(`part:${id}:${index}`, body, { expirationTtl: PART_TTL_S });
   return json({ ok: true }, 201);
 }
 
@@ -162,7 +164,7 @@ async function list(env, url) {
     .flat()
     .filter((b) => !seen.has(b.id) && seen.add(b.id))
     .sort((a, b) => b.time - a.time)
-    .map((b) => ({
+    .map(({ to, ...b }) => ({
       ...b,
       url: `${url.origin}/book/${b.id}/${b.parts}/${encodeURIComponent(b.name)}`,
       coverUrl: b.cover ? `${url.origin}/cover/${b.id}` : null,
@@ -205,18 +207,27 @@ async function download(env, id, parts, name) {
   });
 }
 
+async function handle(request, env, ctx) {
+  const url = new URL(request.url);
+  const [, route, id, second, third] = url.pathname.split("/");
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  if (request.method === "POST" && route === "part" && id && second) return part(request, env, id, second);
+  if (request.method === "POST" && route === "drop") return drop(request, env);
+  if (request.method === "GET" && route === "list") return list(env, url);
+  if (request.method === "GET" && route === "lookup") return lookup(url, ctx);
+  if (request.method === "POST" && route === "remove") return remove(env, url);
+  if (request.method === "GET" && route === "book" && id && second && third) return download(env, id, second, third);
+  if (request.method === "GET" && route === "cover" && id) return cover(env, id);
+  return json({ error: "Not found." }, 404);
+}
+
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const [, route, id, second, third] = url.pathname.split("/");
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-    if (request.method === "POST" && route === "part" && id && second) return part(request, env, id, second);
-    if (request.method === "POST" && route === "drop") return drop(request, env);
-    if (request.method === "GET" && route === "list") return list(env, url);
-    if (request.method === "GET" && route === "lookup") return lookup(url, ctx);
-    if (request.method === "POST" && route === "remove") return remove(env, url);
-    if (request.method === "GET" && route === "book" && id && second && third) return download(env, id, second, third);
-    if (request.method === "GET" && route === "cover" && id) return cover(env, id);
-    return json({ error: "Not found." }, 404);
+    try {
+      return await handle(request, env, ctx);
+    } catch {
+      // An uncaught error gives a response without CORS headers, which the pages see as no connection.
+      return json({ error: "Server error." }, 500);
+    }
   },
 };

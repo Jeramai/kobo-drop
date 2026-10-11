@@ -8,9 +8,9 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"net/url"
-	"html"
 	"path"
 	"regexp"
 	"strings"
@@ -80,6 +80,18 @@ func readFile(zr *zip.Reader, name string) []byte {
 	return b
 }
 
+func rootfile(zr *zip.Reader) string {
+	var container struct {
+		Rootfiles []struct {
+			Path string `xml:"full-path,attr"`
+		} `xml:"rootfiles>rootfile"`
+	}
+	if xml.Unmarshal(readFile(zr, "META-INF/container.xml"), &container) != nil || len(container.Rootfiles) == 0 {
+		return ""
+	}
+	return container.Rootfiles[0].Path
+}
+
 func meta(this js.Value, args []js.Value) interface{} {
 	in := readBytes(args[0])
 	res := map[string]interface{}{}
@@ -88,15 +100,10 @@ func meta(this js.Value, args []js.Value) interface{} {
 		return res
 	}
 
-	var container struct {
-		Rootfiles []struct {
-			Path string `xml:"full-path,attr"`
-		} `xml:"rootfiles>rootfile"`
-	}
-	if xml.Unmarshal(readFile(zr, "META-INF/container.xml"), &container) != nil || len(container.Rootfiles) == 0 {
+	opfPath := rootfile(zr)
+	if opfPath == "" {
 		return res
 	}
-	opfPath := container.Rootfiles[0].Path
 	var pkg opf
 	if xml.Unmarshal(readFile(zr, opfPath), &pkg) != nil {
 		return res
@@ -144,10 +151,12 @@ func meta(this js.Value, args []js.Value) interface{} {
 }
 
 var (
-	reTitle    = regexp.MustCompile(`(?s)(<(?:\w+:)?title\b[^>]*>).*?(</(?:\w+:)?title>)`)
-	reCreator  = regexp.MustCompile(`(?s)(<(?:\w+:)?creator\b[^>]*>).*?(</(?:\w+:)?creator>)`)
-	reManifest = regexp.MustCompile(`</(?:\w+:)?manifest>`)
-	reMetadata = regexp.MustCompile(`</(?:\w+:)?metadata>`)
+	reTitle     = regexp.MustCompile(`(?s)(<(?:\w+:)?title\b[^>]*>).*?(</(?:\w+:)?title>)`)
+	reCreator   = regexp.MustCompile(`(?s)(<(?:\w+:)?creator\b[^>]*>).*?(</(?:\w+:)?creator>)`)
+	reManifest  = regexp.MustCompile(`</(?:\w+:)?manifest>`)
+	reMetadata  = regexp.MustCompile(`</(?:\w+:)?metadata>`)
+	reCoverProp = regexp.MustCompile(`\s+properties="cover-image"`)
+	reCoverMeta = regexp.MustCompile(`<(?:\w+:)?meta\b[^>]*\bname="cover"[^>]*/>`)
 )
 
 func replaceFirst(re *regexp.Regexp, s, value string) string {
@@ -164,7 +173,7 @@ func replaceFirst(re *regexp.Regexp, s, value string) string {
 
 func finish(this js.Value, args []js.Value) interface{} {
 	in := readBytes(args[0])
-	title, author := args[1].String(), args[2].String()
+	setTitle, setAuthor := args[1].Type() == js.TypeString, args[2].Type() == js.TypeString
 	var cover []byte
 	if len(args) > 3 && !args[3].IsNull() && !args[3].IsUndefined() {
 		cover = readBytes(args[3])
@@ -178,21 +187,21 @@ func finish(this js.Value, args []js.Value) interface{} {
 	if err != nil {
 		return map[string]interface{}{"error": err.Error()}
 	}
-	var container struct {
-		Rootfiles []struct {
-			Path string `xml:"full-path,attr"`
-		} `xml:"rootfiles>rootfile"`
-	}
-	if xml.Unmarshal(readFile(zr, "META-INF/container.xml"), &container) != nil || len(container.Rootfiles) == 0 {
+	opfPath := rootfile(zr)
+	if opfPath == "" {
 		return map[string]interface{}{"data": args[0]}
 	}
-	opfPath := container.Rootfiles[0].Path
 	opf := string(readFile(zr, opfPath))
-	if title != "" {
-		opf = replaceFirst(reTitle, opf, title)
+	if setTitle && args[1].String() != "" {
+		opf = replaceFirst(reTitle, opf, args[1].String())
 	}
-	if author != "" {
-		opf = replaceFirst(reCreator, opf, author)
+	if setAuthor {
+		opf = replaceFirst(reCreator, opf, args[2].String())
+	}
+	if declareID != "" || cover != nil {
+		// kepubify marks the element with id="cover" as the cover, which is often the XHTML cover page.
+		opf = reCoverProp.ReplaceAllLiteralString(opf, "")
+		opf = reCoverMeta.ReplaceAllLiteralString(opf, "")
 	}
 	if declareID != "" && cover == nil {
 		item := regexp.MustCompile(`<(?:\w+:)?item\b[^>]*\bid="` + regexp.QuoteMeta(declareID) + `"[^>]*?(/?)>`)

@@ -148,8 +148,10 @@
   function forgetExpired(books) {
     var keep = {};
     for (var i = 0; i < books.length; i++) if (downloaded[books[i].url]) keep[books[i].url] = 1;
+    var before = JSON.stringify(downloaded);
     downloaded = keep;
-    store("downloaded", JSON.stringify(downloaded));
+    var after = JSON.stringify(keep);
+    if (after !== before) store("downloaded", after);
   }
 
   function render(books) {

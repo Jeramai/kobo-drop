@@ -89,7 +89,7 @@ EPUB ─► kepubify (WebAssembly)
 
 Books stay on the server for 24 hours, then KV deletes them. You can remove a book earlier from
 either page. There are no accounts, cookies or analytics; the pages do load Literata from Google
-Fonts and ask [ipify](https://www.ipify.org) for your public address, and for a book without a
+Fonts and ask [ipify](https://www.ipify.org) (or icanhazip.com when ipify fails) for your public address, and for a book without a
 cover the Worker sends its title and author to Open Library and Google Books. Anyone who knows your channel (your
 public IP address or your code) can see and add books while they are there, so treat the code
 like a house key for a mailbox, not a vault.

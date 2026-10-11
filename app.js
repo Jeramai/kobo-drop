@@ -51,7 +51,7 @@ $("code-input").addEventListener("input", (e) => e.target.setCustomValidity(""))
 
 const converterReady = (async () => {
   const go = new Go();
-  const { instance } = await WebAssembly.instantiateStreaming(fetch("kepubify.wasm?v=14"), go.importObject);
+  const { instance } = await WebAssembly.instantiateStreaming(fetch("kepubify.wasm?v=16"), go.importObject);
   go.run(instance);
 })();
 
@@ -267,7 +267,7 @@ async function bookCover(cover, type) {
 
 function finishBook(bytes, book) {
   if (!book.retitle && !book.embedCover && !book.declareCover) return bytes;
-  const result = window.epubFinish(bytes, book.retitle ? book.title : "", book.retitle ? book.author : "", book.embedCover, book.declareCover);
+  const result = window.epubFinish(bytes, book.retitle ? book.title : null, book.retitle ? book.author : null, book.embedCover, book.declareCover);
   return result.error ? bytes : result.data;
 }
 
@@ -348,7 +348,8 @@ async function takeShared() {
     (await cache.matchAll()).map(async (res) => {
       const blob = await res.blob();
       let name = decodeURIComponent(res.headers.get("x-name") || "book.epub");
-      if (blob.type === "application/epub+zip" && !/\.epub$/i.test(name)) name += ".epub";
+      const epub = blob.type === "application/epub+zip" || (await blob.slice(30, 58).text()) === "mimetypeapplication/epub+zip";
+      if (epub && !/\.epub$/i.test(name)) name += ".epub";
       return new File([blob], name, { type: blob.type });
     })
   );
