@@ -111,14 +111,17 @@
   }
 
   var homeTopic = null;
+  var homeChecked = false;
+  setTimeout(function () { homeChecked = true; }, 5000);
   function findHome() {
     get("https://api4.ipify.org?format=json", function (text) {
       var ip = null;
       try { ip = JSON.parse(text).ip; } catch (e) {}
-      if (ip) { homeTopic = TOPIC_PREFIX + "home-" + ip.replace(/\./g, "-"); return; }
+      if (ip) { homeTopic = TOPIC_PREFIX + "home-" + ip.replace(/\./g, "-"); homeChecked = true; return; }
       get("https://ipv4.icanhazip.com", function (plain) {
         var m = /^\s*(\d+\.\d+\.\d+\.\d+)\s*$/.exec(plain || "");
         if (m) homeTopic = TOPIC_PREFIX + "home-" + m[1].replace(/\./g, "-");
+        homeChecked = true;
       });
     });
   }
@@ -193,7 +196,7 @@
     var topics = [];
     if (homeTopic) topics.push(homeTopic);
     if (code) topics.push(TOPIC_PREFIX + code);
-    if (!topics.length) {
+    if (!homeChecked || !topics.length) {
       el("status").innerHTML = "Looking for books.";
       setTimeout(poll, 1000);
       return;
