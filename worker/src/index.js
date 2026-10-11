@@ -76,6 +76,23 @@ async function drop(request, env) {
   return json(book, 201);
 }
 
+async function remove(env, url) {
+  const id = url.searchParams.get("id") || "";
+  const from = channels(url.searchParams.get("from"));
+  if (!ID.test(id) || !from) return json({ error: "Bad book or channel." }, 400);
+  let parts = 0;
+  for (const channel of from) {
+    const index = await readIndex(env, channel);
+    const book = index.find((b) => b.id === id);
+    if (!book) continue;
+    parts = Math.max(parts, book.parts);
+    await env.BOOKS.put(`index:${channel}`, JSON.stringify(index.filter((b) => b.id !== id)));
+  }
+  const keys = [`cover:${id}`, ...Array.from({ length: parts }, (_, n) => `part:${id}:${n}`)];
+  await Promise.all(keys.map((key) => env.BOOKS.delete(key)));
+  return json({ ok: true });
+}
+
 async function cover(env, id) {
   const body = await env.BOOKS.get(`cover:${id}`, "stream");
   if (!body) return new Response(null, { status: 404, headers: CORS });
@@ -133,6 +150,7 @@ export default {
     if (request.method === "POST" && route === "part" && id && second) return part(request, env, id, second);
     if (request.method === "POST" && route === "drop") return drop(request, env);
     if (request.method === "GET" && route === "list") return list(env, url);
+    if (request.method === "POST" && route === "remove") return remove(env, url);
     if (request.method === "GET" && route === "book" && id && second && third) return download(env, id, second, third);
     if (request.method === "GET" && route === "cover" && id) return cover(env, id);
     return json({ error: "Not found." }, 404);

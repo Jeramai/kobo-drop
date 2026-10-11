@@ -122,7 +122,7 @@ function post(url, body, onProgress) {
     xhr.onload = () => {
       if (xhr.status === 413) reject(new Error("This book is larger than 100 MB, which is the limit."));
       else if (xhr.status >= 300) reject(new Error(`The server refused the book (error ${xhr.status}). Try again in a minute.`));
-      else resolve();
+      else resolve(xhr.responseText);
     };
     xhr.send(body);
   });
@@ -131,6 +131,8 @@ function post(url, body, onProgress) {
 function newId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
 }
+
+let recordQueue = Promise.resolve();
 
 async function upload(bytes, form, onProgress) {
   const id = newId();
@@ -144,8 +146,13 @@ async function upload(bytes, form, onProgress) {
   form.append("id", id);
   form.append("parts", parts);
   form.append("size", bytes.length);
-  form.append("to", [await findHomeChannel(), code].filter(Boolean).join(","));
-  await post(`${API}/drop`, form);
+  const to = [await findHomeChannel(), code].filter(Boolean).join(",");
+  form.append("to", to);
+  // One record at a time: the Worker updates a channel list with a read and a write, so parallel records lose books.
+  const record = recordQueue.then(() => post(`${API}/drop`, form));
+  recordQueue = record.catch(() => {});
+  await record;
+  return { id, to };
 }
 
 function addRow(name) {
@@ -160,9 +167,31 @@ function addRow(name) {
   author.className = "author";
   state.className = "state";
   title.textContent = name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "");
-  li.append(cover, title, author, state);
+  const line = document.createElement("span");
+  line.className = "line";
+  line.append(state);
+  li.append(cover, title, author, line);
   $("sent").prepend(li);
   return {
+    removable(onRemove) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "remove";
+      button.textContent = "Remove";
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          await onRemove();
+          button.remove();
+          state.textContent = "Removed from the Kobo page";
+          li.className = "removed";
+        } catch (err) {
+          button.disabled = false;
+          state.textContent = err.message;
+        }
+      });
+      line.append(button);
+    },
     details(meta, thumb) {
       if (meta.title) title.textContent = meta.title;
       if (meta.author) author.textContent = meta.author;
@@ -175,8 +204,7 @@ function addRow(name) {
   };
 }
 
-async function send(file) {
-  const row = addRow(file.name);
+async function send(file, row) {
   try {
     if (!/\.epub$/i.test(file.name)) throw new Error("Only EPUB files can go to the Kobo from here.");
     row.state("Converting");
@@ -192,20 +220,22 @@ async function send(file) {
     if (thumb) form.append("cover", thumb, "cover.jpg");
 
     row.state("Sending");
-    await upload(bytes, form, (part) => row.state(`Sending, ${Math.round(part * 100)}%`));
+    const sent = await upload(bytes, form, (part) => row.state(`Sending, ${Math.round(part * 100)}%`));
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     row.state(`On the Kobo page, ${time}`, "done");
+    row.removable(() => post(`${API}/remove?id=${sent.id}&from=${sent.to}`));
     storage("sentOnce", "1");
   } catch (err) {
     row.state(err.message, "failed");
   }
 }
 
-let queue = Promise.resolve();
-
-// One at a time: the Worker updates each channel list with a read and a write, so parallel sends lose books.
 function sendAll(files) {
-  for (const file of files) queue = queue.then(() => send(file));
+  const rows = [...files].reverse().map((file) => [file, addRow(file.name)]).reverse();
+  for (const [file, row] of rows) {
+    row.state("Waiting");
+    send(file, row);
+  }
 }
 
 $("file").addEventListener("change", (e) => {

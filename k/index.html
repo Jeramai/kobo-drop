@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=1072">
 <title>Kobo Drop</title>
 <style>
   body { margin: 0; background: #fff; color: #000; font-family: Georgia, serif; font-size: 20px; line-height: 1.35; }
@@ -11,15 +11,17 @@
   p { margin: 0 0 12px; }
   .hint { color: #333; font-size: 18px; margin-top: 2px; }
   #list { margin: 14px -8px 0; font-size: 0; }
-  .book { display: inline-block; vertical-align: top; width: 33.33%; padding: 0 8px 18px; box-sizing: border-box; font-size: 20px; color: #000; text-decoration: none; }
-  @media (min-width: 640px) { .book { width: 25%; } }
+  .book { display: inline-block; vertical-align: top; width: 20%; padding: 0 8px 16px; box-sizing: border-box; font-size: 20px; }
   .shot { position: relative; height: 0; padding-bottom: 150%; overflow: hidden; border: 2px solid #000; background: #fff; }
   .shot img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-  .shot .plain { position: absolute; top: 0; left: 0; right: 0; bottom: 0; padding: 14px 12px; background: #000; color: #fff; font-size: 22px; font-weight: bold; line-height: 1.2; word-wrap: break-word; overflow: hidden; }
-  .shot .plain span { display: block; font-size: 16px; font-weight: normal; margin-top: 10px; }
-  .title { font-size: 18px; font-weight: bold; line-height: 1.2; margin-top: 8px; max-height: 2.4em; overflow: hidden; word-wrap: break-word; }
+  .shot .plain { position: absolute; top: 0; left: 0; right: 0; bottom: 0; padding: 12px 10px; background: #000; color: #fff; font-size: 19px; font-weight: bold; line-height: 1.2; word-wrap: break-word; overflow: hidden; }
+  .shot .plain span { display: block; font-size: 15px; font-weight: normal; margin-top: 10px; }
+  .title { font-size: 17px; font-weight: bold; line-height: 1.2; margin-top: 8px; max-height: 2.4em; overflow: hidden; word-wrap: break-word; }
   .author { font-size: 16px; color: #333; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hit { display: block; color: #000; text-decoration: none; }
   .done-mark { font-size: 15px; margin-top: 4px; font-weight: bold; }
+  .remove { display: inline-block; font-size: 16px; color: #000; margin-top: 6px; padding: 4px 0; }
+  .remove.armed { font-weight: bold; }
   .btn { display: inline-block; font: inherit; font-size: 22px; font-weight: bold; color: #fff; background: #000; border: 3px solid #000; padding: 10px 22px; text-decoration: none; }
   input { font: inherit; font-size: 28px; letter-spacing: 3px; width: 240px; padding: 8px 12px; border: 3px solid #000; }
   form .btn { margin-left: 8px; }
@@ -48,7 +50,8 @@
     <p class="foot">Books stay here for 24 hours. Bookmark this page to open it with one tap.
       <span id="network"></span>
       <span id="mode-home">Books from phones and computers on this Wi-Fi appear here by themselves. Away from home? <a href="?enter=1">Use a code</a></span>
-      <span id="mode-code" style="display:none">Code <b id="code"></b>. <a href="?reset=1">Remove the code</a></span></p>
+      <span id="mode-code" style="display:none">Code <b id="code"></b>. <a href="?reset=1">Remove the code</a></span>
+      <span id="screen"></span></p>
   </div>
 </div>
 <script>
@@ -114,6 +117,8 @@
     el("code").appendChild(document.createTextNode(code));
   }
 
+  el("screen").appendChild(document.createTextNode("Screen " + window.innerWidth + " px."));
+
   var homeChannel = null;
   var homeChecked = false;
   setTimeout(function () { homeChecked = true; }, 5000);
@@ -141,6 +146,7 @@
   try { downloaded = JSON.parse(store("downloaded") || "{}") || {}; } catch (e) {}
   var shown = "";
   var lastBooks = [];
+  var removed = {};
 
   function render(books) {
     lastBooks = books;
@@ -152,55 +158,88 @@
     var list = el("list");
     list.innerHTML = "";
     for (var j = 0; j < books.length; j++) {
-      var b = books[j];
-      var name = b.title || b.name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "");
-      var card = document.createElement("a");
-      card.className = "book";
-      card.href = b.url;
-      card.onclick = function () {
-        downloaded[this.href] = 1;
-        store("downloaded", JSON.stringify(downloaded));
-        setTimeout(function () { shown = ""; render(lastBooks); }, 500);
-      };
-
-      var shot = document.createElement("div");
-      shot.className = "shot";
-      if (b.coverUrl) {
-        var img = document.createElement("img");
-        img.src = b.coverUrl;
-        img.alt = "";
-        shot.appendChild(img);
-      } else {
-        var plain = document.createElement("div");
-        plain.className = "plain";
-        plain.appendChild(document.createTextNode(name));
-        if (b.author) {
-          var by = document.createElement("span");
-          by.appendChild(document.createTextNode(b.author));
-          plain.appendChild(by);
-        }
-        shot.appendChild(plain);
-      }
-      card.appendChild(shot);
-
-      var title = document.createElement("div");
-      title.className = "title";
-      title.appendChild(document.createTextNode(name));
-      card.appendChild(title);
-      if (b.author) {
-        var author = document.createElement("div");
-        author.className = "author";
-        author.appendChild(document.createTextNode(b.author));
-        card.appendChild(author);
-      }
-      if (downloaded[b.url]) {
-        var mark = document.createElement("div");
-        mark.className = "done-mark";
-        mark.appendChild(document.createTextNode("Downloaded"));
-        card.appendChild(mark);
-      }
-      list.appendChild(card);
+      if (!removed[books[j].id]) list.appendChild(card(books[j]));
     }
+  }
+
+  function card(b) {
+    var name = b.title || b.name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "");
+    var box = document.createElement("div");
+    box.className = "book";
+    var hit = document.createElement("a");
+    hit.className = "hit";
+    hit.href = b.url;
+    hit.onclick = function () {
+      downloaded[b.url] = 1;
+      store("downloaded", JSON.stringify(downloaded));
+      setTimeout(function () { shown = ""; render(lastBooks); }, 500);
+    };
+
+    var shot = document.createElement("div");
+    shot.className = "shot";
+    if (b.coverUrl) {
+      var img = document.createElement("img");
+      img.src = b.coverUrl;
+      img.alt = "";
+      shot.appendChild(img);
+    } else {
+      var plain = document.createElement("div");
+      plain.className = "plain";
+      plain.appendChild(document.createTextNode(name));
+      if (b.author) {
+        var by = document.createElement("span");
+        by.appendChild(document.createTextNode(b.author));
+        plain.appendChild(by);
+      }
+      shot.appendChild(plain);
+    }
+    hit.appendChild(shot);
+
+    var title = document.createElement("div");
+    title.className = "title";
+    title.appendChild(document.createTextNode(name));
+    hit.appendChild(title);
+    if (b.author) {
+      var author = document.createElement("div");
+      author.className = "author";
+      author.appendChild(document.createTextNode(b.author));
+      hit.appendChild(author);
+    }
+    if (downloaded[b.url]) {
+      var mark = document.createElement("div");
+      mark.className = "done-mark";
+      mark.appendChild(document.createTextNode("Downloaded"));
+      hit.appendChild(mark);
+    }
+    box.appendChild(hit);
+
+    var remove = document.createElement("a");
+    remove.className = "remove";
+    remove.href = "#";
+    remove.appendChild(document.createTextNode("Remove"));
+    var armed = false;
+    remove.onclick = function () {
+      if (!armed) {
+        armed = true;
+        remove.className = "remove armed";
+        remove.firstChild.nodeValue = "Tap again to remove";
+        setTimeout(function () {
+          armed = false;
+          remove.className = "remove";
+          remove.firstChild.nodeValue = "Remove";
+        }, 4000);
+        return false;
+      }
+      removed[b.id] = 1;
+      shown = "";
+      render(lastBooks);
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", API + "/remove?id=" + b.id + "&from=" + currentChannels().join(","), true);
+      xhr.send();
+      return false;
+    };
+    box.appendChild(remove);
+    return box;
   }
 
   function parse(text) {
@@ -213,10 +252,15 @@
     return books;
   }
 
-  function poll() {
+  function currentChannels() {
     var channels = [];
     if (homeChannel) channels.push(homeChannel);
     if (code) channels.push(code);
+    return channels;
+  }
+
+  function poll() {
+    var channels = currentChannels();
     if (!homeChecked || !channels.length) {
       el("status").innerHTML = "Looking for books.";
       setTimeout(poll, 1000);
@@ -228,7 +272,9 @@
         el("status").innerHTML = "<span class='error'>No connection.</span> Check the Wi-Fi. The page tries again by itself.";
         return;
       }
-      var books = parse(text);
+      var all = parse(text);
+      var books = [];
+      for (var i = 0; i < all.length; i++) if (!removed[all[i].id]) books.push(all[i]);
       el("status").innerHTML = books.length
         ? "Tap a book to download it. It then appears in your library."
         : "No books yet. Send one from the phone or computer. It appears here by itself.";
