@@ -33,7 +33,7 @@ async function readIndex(env, channel) {
 }
 
 function text(value, max) {
-  return String(value || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, max);
+  return String(value || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, max).toWellFormed();
 }
 
 async function part(request, env, id, n) {

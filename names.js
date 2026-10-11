@@ -2,7 +2,7 @@ const JUNK = [
   /\b(?:z-?library|z-?lib|1lib|zlibrary|singlelogin)(?:\.[a-z]{2,4})?\b/gi,
   /\b(?:b-ok|libgen|library genesis|anna['’]?s archive|oceanofpdf|ebook3000|dokumen|pdfdrive|epubjet|wolnelektury)(?:\.[a-z]{2,4})?\b/gi,
   /\bwww\.[\w-]+\.[a-z]{2,4}\b/gi,
-  /\b[\w-]+\.(?:com|org|net|sk|se|is|li|io|to)\b/gi,
+  /\b[\w-]{2,}\.(?:com|org|net|sk|se|is|li|io|to)\b/gi,
 ];
 
 function cleanText(value) {

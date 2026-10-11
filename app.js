@@ -1,6 +1,7 @@
 const API = "https://kobo-drop.jeramai.workers.dev";
 const PART_BYTES = 20 * 1024 * 1024;
 const MAX_BYTES = 5 * PART_BYTES;
+const STALL_MS = 60 * 1000;
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 
 const $ = (id) => document.getElementById(id);
@@ -51,7 +52,7 @@ $("code-input").addEventListener("input", (e) => e.target.setCustomValidity(""))
 
 const converterReady = (async () => {
   const go = new Go();
-  const { instance } = await WebAssembly.instantiateStreaming(fetch("kepubify.wasm?v=17"), go.importObject);
+  const { instance } = await WebAssembly.instantiateStreaming(fetch("kepubify.wasm?v=18"), go.importObject);
   go.run(instance);
 })();
 
@@ -123,15 +124,27 @@ class HttpError extends Error {
 function postOnce(url, body, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    let stall;
+    const watch = () => {
+      clearTimeout(stall);
+      stall = setTimeout(() => xhr.abort(), STALL_MS);
+    };
+    const offline = () => reject(new HttpError(0, "No connection to the server. Check the internet connection and try again."));
     xhr.open("POST", url);
-    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded);
-    xhr.onerror = () => reject(new HttpError(0, "No connection to the server. Check the internet connection and try again."));
+    xhr.upload.onprogress = (e) => {
+      watch();
+      if (e.lengthComputable) onProgress?.(e.loaded);
+    };
+    xhr.onerror = offline;
+    xhr.onabort = offline;
+    xhr.onloadend = () => clearTimeout(stall);
     xhr.onload = () => {
       if (xhr.status === 413) reject(new HttpError(413, "This book is larger than 100 MB, which is the limit."));
       else if (xhr.status >= 300) reject(new HttpError(xhr.status, `The server refused the book (error ${xhr.status}). Try again in a minute.`));
       else resolve(xhr.responseText);
     };
     xhr.send(body);
+    watch();
   });
 }
 

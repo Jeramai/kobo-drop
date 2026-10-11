@@ -121,6 +121,11 @@ func meta(this js.Value, args []js.Value) interface{} {
 			coverID = m.Content
 		}
 	}
+	// kepubify gives cover-image to this id and nothing else, whatever the manifest declares.
+	kepubCover := coverID
+	if kepubCover == "" {
+		kepubCover = "cover"
+	}
 	href, mediaType, id, declared := "", "", "", false
 	for pass := 0; pass < 3 && href == ""; pass++ {
 		for _, it := range pkg.Items {
@@ -131,7 +136,7 @@ func meta(this js.Value, args []js.Value) interface{} {
 			if (pass == 0 && strings.Contains(it.Properties, "cover-image")) ||
 				(pass == 1 && coverID != "" && it.ID == coverID) ||
 				(pass == 2 && strings.Contains(lower, "cover")) {
-				href, mediaType, id, declared = it.Href, it.MediaType, it.ID, pass < 2
+				href, mediaType, id, declared = it.Href, it.MediaType, it.ID, it.ID == kepubCover
 				break
 			}
 		}
