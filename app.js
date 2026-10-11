@@ -32,6 +32,7 @@ function showCode() {
   $("kobo-addr").textContent = new URL("k/", location.href).href.replace(/^https?:\/\//, "");
 }
 showCode();
+findHomeTopic();
 
 $("code-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -67,16 +68,30 @@ async function toKepub(file) {
   return result.data;
 }
 
-async function findHomeTopic() {
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+async function findHomeIp() {
   try {
     const { ip } = await (await fetch("https://api4.ipify.org?format=json")).json();
-    if (ip) return `${TOPIC_PREFIX}home-${ip.replaceAll(".", "-")}`;
+    if (IPV4.test(ip)) return ip;
   } catch {}
   try {
     const ip = (await (await fetch("https://ipv4.icanhazip.com")).text()).trim();
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return `${TOPIC_PREFIX}home-${ip.replaceAll(".", "-")}`;
+    if (IPV4.test(ip)) return ip;
   } catch {}
   return null;
+}
+
+async function findHomeTopic() {
+  const ip = await findHomeIp();
+  showWhere(ip);
+  return ip ? `${TOPIC_PREFIX}home-${ip.replaceAll(".", "-")}` : null;
+}
+
+function showWhere(ip) {
+  $("where").innerHTML = ip
+    ? `Sends to every Kobo on this Wi-Fi network (<b>${ip.split(".").slice(2).join(".")}</b>), and to Kobos with the code.`
+    : "Cannot find this Wi-Fi network. Books go only to Kobos with the code.";
 }
 
 async function publish(topic, init) {

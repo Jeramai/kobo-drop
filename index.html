@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,750;1,7..72,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <main>
@@ -21,6 +21,8 @@
     <span class="book-title">Drop an EPUB here</span>
     <span class="book-sub">or tap to choose one from this device</span>
   </label>
+
+  <p class="where" id="where">Looking for this Wi-Fi network.</p>
 
   <ol class="sent" id="sent" aria-live="polite"></ol>
 
@@ -35,7 +37,7 @@
     <details class="away">
       <summary>Send from another Wi-Fi network</summary>
       <p>On the Kobo page, tap <b>Use a code</b> and type <b class="code" id="code"></b></p>
-      <p>Also use the code if this phone has a VPN or iCloud Private Relay turned on.</p>
+      <p>Also use the code if the Wi-Fi network number here and on the Kobo page are not the same. A VPN, iCloud Private Relay, or mobile data can cause this.</p>
       <form id="code-form">
         <label for="code-input">Code from another phone or computer</label>
         <input id="code-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="abcd-efgh">
@@ -47,6 +49,6 @@
   <p class="fine">Books are converted to KEPUB on this device. They then go through <a href="https://ntfy.sh">ntfy.sh</a>, which deletes them after 3 hours. The limit is 15 MB per book.</p>
 </main>
 <script src="wasm_exec.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

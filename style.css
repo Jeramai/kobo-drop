@@ -103,6 +103,14 @@ a { color: var(--plate); }
   font-style: italic;
 }
 
+.where {
+  margin: 1.5rem 10px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.where b { color: var(--ink); font-weight: 600; }
+
 .sent {
   list-style: none;
   padding: 0;
