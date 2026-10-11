@@ -51,7 +51,7 @@ $("code-input").addEventListener("input", (e) => e.target.setCustomValidity(""))
 
 const converterReady = (async () => {
   const go = new Go();
-  const { instance } = await WebAssembly.instantiateStreaming(fetch("kepubify.wasm?v=16"), go.importObject);
+  const { instance } = await WebAssembly.instantiateStreaming(fetch("kepubify.wasm?v=17"), go.importObject);
   go.run(instance);
 })();
 
@@ -135,7 +135,7 @@ function postOnce(url, body, onProgress) {
   });
 }
 
-async function post(url, body, onProgress, attempts = 3) {
+async function post(url, body, onProgress, attempts = 5) {
   for (let n = 1; ; n++) {
     try {
       return await postOnce(url, body, onProgress);
