@@ -51,7 +51,7 @@ $("code-input").addEventListener("input", (e) => e.target.setCustomValidity(""))
 
 const converterReady = (async () => {
   const go = new Go();
-  const { instance } = await WebAssembly.instantiateStreaming(fetch("kepubify.wasm"), go.importObject);
+  const { instance } = await WebAssembly.instantiateStreaming(fetch("kepubify.wasm?v=14"), go.importObject);
   go.run(instance);
 })();
 
@@ -266,8 +266,8 @@ async function bookCover(cover, type) {
 }
 
 function finishBook(bytes, book) {
-  if (!book.retitle && !book.embedCover) return bytes;
-  const result = window.epubFinish(bytes, book.retitle ? book.title : "", book.retitle ? book.author : "", book.embedCover);
+  if (!book.retitle && !book.embedCover && !book.declareCover) return bytes;
+  const result = window.epubFinish(bytes, book.retitle ? book.title : "", book.retitle ? book.author : "", book.embedCover, book.declareCover);
   return result.error ? bytes : result.data;
 }
 
@@ -291,7 +291,14 @@ async function preview(file, row) {
   }
   const thumb = await thumbnail(cover, coverType);
   row.details({ title, author }, thumb);
-  return { title, author, thumb, embedCover, retitle: title !== (meta.title || "") || author !== (meta.author || "") };
+  return {
+    title,
+    author,
+    thumb,
+    embedCover,
+    declareCover: meta.cover && !meta.coverDeclared ? meta.coverId : null,
+    retitle: title !== (meta.title || "") || author !== (meta.author || ""),
+  };
 }
 
 async function send(file, row) {

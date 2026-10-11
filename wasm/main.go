@@ -114,7 +114,7 @@ func meta(this js.Value, args []js.Value) interface{} {
 			coverID = m.Content
 		}
 	}
-	href, mediaType := "", ""
+	href, mediaType, id, declared := "", "", "", false
 	for pass := 0; pass < 3 && href == ""; pass++ {
 		for _, it := range pkg.Items {
 			if !strings.HasPrefix(it.MediaType, "image/") {
@@ -124,7 +124,7 @@ func meta(this js.Value, args []js.Value) interface{} {
 			if (pass == 0 && strings.Contains(it.Properties, "cover-image")) ||
 				(pass == 1 && coverID != "" && it.ID == coverID) ||
 				(pass == 2 && strings.Contains(lower, "cover")) {
-				href, mediaType = it.Href, it.MediaType
+				href, mediaType, id, declared = it.Href, it.MediaType, it.ID, pass < 2
 				break
 			}
 		}
@@ -136,6 +136,8 @@ func meta(this js.Value, args []js.Value) interface{} {
 		if b := readFile(zr, path.Join(path.Dir(opfPath), href)); len(b) > 0 {
 			res["cover"] = toJS(b)
 			res["coverType"] = mediaType
+			res["coverId"] = id
+			res["coverDeclared"] = declared
 		}
 	}
 	return res
@@ -167,6 +169,10 @@ func finish(this js.Value, args []js.Value) interface{} {
 	if len(args) > 3 && !args[3].IsNull() && !args[3].IsUndefined() {
 		cover = readBytes(args[3])
 	}
+	declareID := ""
+	if len(args) > 4 && args[4].Type() == js.TypeString {
+		declareID = args[4].String()
+	}
 
 	zr, err := zip.NewReader(bytes.NewReader(in), int64(len(in)))
 	if err != nil {
@@ -187,6 +193,16 @@ func finish(this js.Value, args []js.Value) interface{} {
 	}
 	if author != "" {
 		opf = replaceFirst(reCreator, opf, author)
+	}
+	if declareID != "" && cover == nil {
+		item := regexp.MustCompile(`<(?:\w+:)?item\b[^>]*\bid="` + regexp.QuoteMeta(declareID) + `"[^>]*?(/?)>`)
+		opf = item.ReplaceAllStringFunc(opf, func(m string) string {
+			if strings.Contains(m, "properties=") {
+				return m
+			}
+			return strings.Replace(m, " id=", ` properties="cover-image" id=`, 1)
+		})
+		opf = reMetadata.ReplaceAllLiteralString(opf, `<meta name="cover" content="`+html.EscapeString(declareID)+`"/></metadata>`)
 	}
 	coverPath := path.Join(path.Dir(opfPath), "kobodrop-cover.jpg")
 	if cover != nil {
