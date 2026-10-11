@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/url"
 	"path"
@@ -26,6 +27,17 @@ func toJS(b []byte) js.Value {
 	res := js.Global().Get("Uint8Array").New(len(b))
 	js.CopyBytesToJS(res, b)
 	return res
+}
+
+func guard(fn func(js.Value, []js.Value) interface{}) func(js.Value, []js.Value) interface{} {
+	return func(this js.Value, args []js.Value) (res interface{}) {
+		defer func() {
+			if r := recover(); r != nil {
+				res = map[string]interface{}{"error": fmt.Sprint("The converter failed on this book: ", r)}
+			}
+		}()
+		return fn(this, args)
+	}
 }
 
 func convert(this js.Value, args []js.Value) interface{} {
@@ -128,7 +140,7 @@ func meta(this js.Value, args []js.Value) interface{} {
 }
 
 func main() {
-	js.Global().Set("kepubify", js.FuncOf(convert))
-	js.Global().Set("epubMeta", js.FuncOf(meta))
+	js.Global().Set("kepubify", js.FuncOf(guard(convert)))
+	js.Global().Set("epubMeta", js.FuncOf(guard(meta)))
 	select {}
 }

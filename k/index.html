@@ -145,6 +145,13 @@
   var lastBooks = [];
   var removed = {};
 
+  function forgetExpired(books) {
+    var keep = {};
+    for (var i = 0; i < books.length; i++) if (downloaded[books[i].url]) keep[books[i].url] = 1;
+    downloaded = keep;
+    store("downloaded", JSON.stringify(downloaded));
+  }
+
   function render(books) {
     lastBooks = books;
     var key = "";
@@ -240,13 +247,7 @@
   }
 
   function parse(text) {
-    var books = [];
-    try { books = JSON.parse(text); } catch (e) {}
-    for (var i = 0; i < books.length; i++) {
-      books[i].time = books[i].time / 1000;
-      books[i].expires = books[i].expires / 1000;
-    }
-    return books;
+    try { return JSON.parse(text) || []; } catch (e) { return []; }
   }
 
   function currentChannels() {
@@ -259,7 +260,9 @@
   function poll() {
     var channels = currentChannels();
     if (!homeChecked || !channels.length) {
-      el("status").innerHTML = "Looking for books.";
+      el("status").innerHTML = homeChecked
+        ? "<span class='error'>Cannot find this Wi-Fi network.</span> <a href='?enter=1'>Use a code</a> to get books."
+        : "Looking for books.";
       setTimeout(poll, 1000);
       return;
     }
@@ -275,6 +278,7 @@
       el("status").innerHTML = books.length
         ? "Tap a book to download it. It then appears in your library."
         : "No books yet. Send one from the phone or computer. It appears here by itself.";
+      forgetExpired(all);
       render(books);
     });
   }

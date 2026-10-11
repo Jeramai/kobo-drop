@@ -65,6 +65,7 @@ async function drop(request, env) {
     title: text(form.get("title"), 300),
     author: text(form.get("author"), 200),
     cover: hasCover,
+    to,
     size: Number(form.get("size")) || 0,
     time: Date.now(),
   };
@@ -80,13 +81,17 @@ async function remove(env, url) {
   const id = url.searchParams.get("id") || "";
   const from = channels(url.searchParams.get("from"));
   if (!ID.test(id) || !from) return json({ error: "Bad book or channel." }, 400);
+  const targets = new Set(from);
   let parts = 0;
   for (const channel of from) {
-    const index = await readIndex(env, channel);
-    const book = index.find((b) => b.id === id);
+    const book = (await readIndex(env, channel)).find((b) => b.id === id);
     if (!book) continue;
     parts = Math.max(parts, book.parts);
-    await env.BOOKS.put(`index:${channel}`, JSON.stringify(index.filter((b) => b.id !== id)));
+    for (const c of book.to || []) targets.add(c);
+  }
+  for (const channel of targets) {
+    const index = await readIndex(env, channel);
+    if (index.some((b) => b.id === id)) await env.BOOKS.put(`index:${channel}`, JSON.stringify(index.filter((b) => b.id !== id)));
   }
   const keys = [`cover:${id}`, ...Array.from({ length: parts }, (_, n) => `part:${id}:${n}`)];
   await Promise.all(keys.map((key) => env.BOOKS.delete(key)));
@@ -116,28 +121,36 @@ async function list(env, url) {
   return json(books);
 }
 
+function disposition(name) {
+  let full = name;
+  try {
+    full = decodeURIComponent(name);
+  } catch {}
+  const ascii = full.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "");
+  const utf8 = encodeURIComponent(full).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
+}
+
 async function download(env, id, parts, name) {
   const count = Number(parts);
   if (!ID.test(id) || !Number.isInteger(count) || count < 1 || count > MAX_PARTS) return json({ error: "Not found." }, 404);
-  const first = await env.BOOKS.get(`part:${id}:0`, "stream");
-  if (!first) return new Response("This book is no longer available. Send it again.", { status: 404, headers: CORS });
+  const streams = await Promise.all(Array.from({ length: count }, (_, n) => env.BOOKS.get(`part:${id}:${n}`, "stream")));
+  if (streams.some((s) => !s)) {
+    await Promise.all(streams.map((s) => s?.cancel()));
+    return new Response("This book is no longer available. Send it again.", { status: 404, headers: CORS });
+  }
 
   const { readable, writable } = new TransformStream();
   (async () => {
-    let stream = first;
-    for (let n = 0; n < count; n++) {
-      if (n > 0) stream = await env.BOOKS.get(`part:${id}:${n}`, "stream");
-      if (!stream) return writable.abort(new Error(`Part ${n} is missing.`));
-      await stream.pipeTo(writable, { preventClose: true });
-    }
+    for (const stream of streams) await stream.pipeTo(writable, { preventClose: true });
     await writable.close();
-  })();
+  })().catch(() => {});
 
   return new Response(readable, {
     headers: {
       ...CORS,
       "content-type": "application/epub+zip",
-      "content-disposition": `attachment; filename="${decodeURIComponent(name).replace(/"/g, "")}"`,
+      "content-disposition": disposition(name),
     },
   });
 }

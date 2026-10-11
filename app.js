@@ -60,14 +60,19 @@ function kepubName(name) {
   return base + ".kepub.epub";
 }
 
-async function toKepub(file) {
+async function readMeta(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   await converterReady;
-  const meta = window.epubMeta(bytes);
-  if (/\.kepub\.epub$/i.test(file.name)) return { bytes, meta };
+  return window.epubMeta(bytes);
+}
+
+async function toKepub(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (/\.kepub\.epub$/i.test(file.name)) return bytes;
+  await converterReady;
   const result = window.kepubify(bytes);
   if (result.error) throw new Error("This file is not a valid EPUB, so it cannot be converted.");
-  return { bytes: result.data, meta };
+  return result.data;
 }
 
 async function thumbnail(cover, type) {
@@ -204,27 +209,60 @@ function addRow(name) {
   };
 }
 
+const UPLOADS_AT_ONCE = 3;
+let uploading = 0;
+const waitingForSlot = [];
+let previewQueue = Promise.resolve();
+
+function uploadSlot() {
+  return new Promise((resolve) => {
+    const start = () => {
+      uploading++;
+      resolve(() => {
+        uploading--;
+        waitingForSlot.shift()?.();
+      });
+    };
+    if (uploading < UPLOADS_AT_ONCE) start();
+    else waitingForSlot.push(start);
+  });
+}
+
+async function preview(file, row) {
+  const meta = await readMeta(file);
+  const thumb = await thumbnail(meta.cover, meta.coverType);
+  row.details(meta, thumb);
+  return { meta, thumb };
+}
+
 async function send(file, row) {
   try {
     if (!/\.epub$/i.test(file.name)) throw new Error("Only EPUB files can go to the Kobo from here.");
-    row.state("Converting");
-    const { bytes, meta } = await toKepub(file);
-    if (bytes.length > MAX_BYTES) throw new Error("This book is larger than 100 MB, which is the limit.");
-    const thumb = await thumbnail(meta.cover, meta.coverType);
-    row.details(meta, thumb);
+    const details = previewQueue.then(() => preview(file, row));
+    previewQueue = details.catch(() => {});
+    const { meta, thumb } = await details;
 
-    const form = new FormData();
-    form.append("name", kepubName(file.name));
-    form.append("title", meta.title || "");
-    form.append("author", meta.author || "");
-    if (thumb) form.append("cover", thumb, "cover.jpg");
+    const release = await uploadSlot();
+    try {
+      row.state("Converting");
+      const bytes = await toKepub(file);
+      if (bytes.length > MAX_BYTES) throw new Error("This book is larger than 100 MB, which is the limit.");
 
-    row.state("Sending");
-    const sent = await upload(bytes, form, (part) => row.state(`Sending, ${Math.round(part * 100)}%`));
-    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    row.state(`On the Kobo page, ${time}`, "done");
-    row.removable(() => post(`${API}/remove?id=${sent.id}&from=${sent.to}`));
-    storage("sentOnce", "1");
+      const form = new FormData();
+      form.append("name", kepubName(file.name));
+      form.append("title", meta.title || "");
+      form.append("author", meta.author || "");
+      if (thumb) form.append("cover", thumb, "cover.jpg");
+
+      row.state("Sending");
+      const sent = await upload(bytes, form, (part) => row.state(`Sending, ${Math.round(part * 100)}%`));
+      const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      row.state(`On the Kobo page, ${time}`, "done");
+      row.removable(() => post(`${API}/remove?id=${sent.id}&from=${sent.to}`));
+      storage("sentOnce", "1");
+    } finally {
+      release();
+    }
   } catch (err) {
     row.state(err.message, "failed");
   }
@@ -242,13 +280,15 @@ async function takeShared() {
   if (!new URLSearchParams(location.search).has("shared")) return;
   history.replaceState(null, "", location.pathname);
   const cache = await caches.open("kobo-drop-share");
-  const files = [];
-  for (const request of await cache.keys()) {
-    const res = await cache.match(request);
-    const name = decodeURIComponent(res.headers.get("x-name") || "book.epub");
-    files.push(new File([await res.blob()], name));
-    await cache.delete(request);
-  }
+  const files = await Promise.all(
+    (await cache.matchAll()).map(async (res) => {
+      const blob = await res.blob();
+      let name = decodeURIComponent(res.headers.get("x-name") || "book.epub");
+      if (blob.type === "application/epub+zip" && !/\.epub$/i.test(name)) name += ".epub";
+      return new File([blob], name, { type: blob.type });
+    })
+  );
+  await caches.delete("kobo-drop-share");
   if (files.length) sendAll(files);
 }
 
