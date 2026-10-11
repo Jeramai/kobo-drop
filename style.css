@@ -19,28 +19,30 @@ body {
   font-family: "Literata", Georgia, serif;
   font-optical-sizing: auto;
   font-size: 1.0625rem;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 main {
-  max-width: 34rem;
+  max-width: 60rem;
   margin: 0 auto;
-  padding: 3.5rem 16px 4rem;
+  padding: max(1.25rem, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(2.5rem, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
 
-h1 {
-  font-size: clamp(2.1rem, 8vw, 2.9rem);
-  line-height: 1.08;
-  font-weight: 750;
-  letter-spacing: -0.015em;
-  margin: 0 0 2rem;
-  max-width: 12ch;
+@media (min-width: 860px) {
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    column-gap: 3.5rem;
+    padding-top: 2.5rem;
+  }
+  .mark { grid-column: 1 / -1; }
 }
 
-h2 {
-  font-size: 1.35rem;
-  font-weight: 600;
-  margin: 0 0 0.25rem;
+.side { margin-top: 2rem; }
+
+@media (min-width: 860px) {
+  .side { margin-top: 0; }
 }
 
 a { color: var(--plate); }
@@ -50,14 +52,28 @@ a { color: var(--plate); }
   outline-offset: 3px;
 }
 
+.mark {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.mark h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
 /* The drop target is drawn as a closed book: cover on the left, page edges on the right. */
 .book {
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  min-height: 15rem;
-  padding: 1.75rem 1.75rem 1.5rem 2.75rem;
+  justify-content: center;
+  min-height: 8.5rem;
+  padding: 1.25rem 1.5rem 1.25rem 2.5rem;
   margin-right: 10px;
   background: var(--page);
   border: 1.5px solid var(--ink);
@@ -69,11 +85,15 @@ a { color: var(--plate); }
   cursor: pointer;
 }
 
+@media (min-width: 860px) {
+  .book { min-height: 12rem; padding-left: 3rem; }
+}
+
 .book::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 1.1rem;
+  width: 1rem;
   background: var(--plate);
   border-radius: 1px 0 0 1px;
 }
@@ -93,18 +113,20 @@ a { color: var(--plate); }
 }
 
 .book-title {
-  font-size: 1.6rem;
-  font-weight: 600;
-  line-height: 1.2;
+  font-size: clamp(1.45rem, 6vw, 1.9rem);
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
 .book-sub {
+  margin-top: 0.3rem;
   color: var(--ink-soft);
   font-style: italic;
 }
 
 .where {
-  margin: 1.5rem 10px 0 0;
+  margin: 1.1rem 10px 0 0;
   color: var(--ink-soft);
   font-size: 0.9375rem;
 }
@@ -114,28 +136,53 @@ a { color: var(--plate); }
 .sent {
   list-style: none;
   padding: 0;
-  margin: 2.25rem 0 0;
+  margin: 1.25rem 0 0;
 }
 
 .sent:empty { display: none; }
 
 .sent li {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0.25rem 1rem;
-  padding: 0.85rem 0;
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  grid-template-areas: "cover title" "cover author" "cover state";
+  align-content: start;
+  column-gap: 0.9rem;
+  padding: 0.75rem 0;
   border-bottom: 1px solid var(--edge);
 }
 
 .sent li:first-child { border-top: 1px solid var(--edge); }
 
-.sent .name {
+.sent .cover {
+  grid-area: cover;
+  width: 3rem;
+  height: 4.5rem;
+  object-fit: cover;
+  border: 1px solid var(--ink);
+  border-radius: 1px 3px 3px 1px;
+  background: var(--plate);
+}
+
+.sent .title {
+  grid-area: title;
   font-weight: 600;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
-.sent .state { color: var(--ink-soft); }
+.sent .author {
+  grid-area: author;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.sent .state {
+  grid-area: state;
+  justify-self: start;
+  margin-top: 0.2rem;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+}
 
 .sent .done .state {
   color: var(--ink);
@@ -143,30 +190,57 @@ a { color: var(--plate); }
   padding: 0 0.15em;
 }
 
-.sent .failed .state { color: var(--error); flex-basis: 100%; }
+.sent .failed .state { color: var(--error); }
 
 .setup {
-  margin-top: 3.5rem;
-  padding-top: 1.75rem;
   border-top: 1.5px solid var(--ink);
+  padding: 0.9rem 0;
 }
 
-.setup > p { margin: 0 0 1rem; color: var(--ink-soft); }
+.setup + .setup { border-top-width: 1px; border-top-color: var(--edge); }
+
+.setup summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.setup summary::-webkit-details-marker { display: none; }
+
+.setup summary::after {
+  content: "+";
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--ink-soft);
+}
+
+.setup[open] summary::after { content: "\2212"; }
+
+.setup h2 {
+  display: inline;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.setup p { margin: 0.6rem 0 0; color: var(--ink-soft); }
 
 .steps {
-  margin: 0;
+  margin: 0.75rem 0 0;
   padding-left: 1.4rem;
 }
 
-.steps li { margin-bottom: 0.5rem; padding-left: 0.25rem; }
+.steps li { margin-bottom: 0.4rem; padding-left: 0.25rem; }
 
-.steps b { font-weight: 600; }
+.steps b, .setup p b { font-weight: 600; color: var(--ink); }
 
 .addr { overflow-wrap: anywhere; }
 
 .code {
   display: inline-block;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   letter-spacing: 0.08em;
   padding: 0 0.35rem;
   background: var(--page);
@@ -174,25 +248,14 @@ a { color: var(--plate); }
   border-radius: 4px;
 }
 
-.away { margin-top: 1.25rem; }
-
-.away summary {
-  cursor: pointer;
-  color: var(--plate);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.away p { margin: 0.75rem 0 0; }
-
-.away label { flex-basis: 100%; color: var(--ink-soft); font-size: 0.9375rem; }
-
 .away form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 1.25rem;
+  margin-top: 1rem;
 }
+
+.away label { flex-basis: 100%; color: var(--ink-soft); font-size: 0.9375rem; }
 
 .away input,
 .away button {
@@ -211,7 +274,11 @@ a { color: var(--plate); }
 }
 
 .fine {
-  margin-top: 3rem;
+  margin: 1.25rem 0 0;
   font-size: 0.875rem;
   color: var(--ink-soft);
 }
+
+.sent .author:empty { display: none; }
+
+.sent .failed .cover { background: var(--edge); border-color: var(--edge); }

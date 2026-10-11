@@ -11,7 +11,8 @@ gets books from any network. A book is stored once and listed on both channels.
 - `index.html` — send page.
 - `k/index.html` — Kobo page. Plain ES5 for the Kobo's old WebKit browser (no fetch, no Promise).
 - `worker/` — the Cloudflare Worker and its KV binding. Deploy with `npx wrangler deploy`.
-- `kepubify.wasm` — [kepubify](https://github.com/pgaskin/kepubify) (MIT, see `LICENSE-kepubify`)
+- `kepubify.wasm` — reads title, author and cover (`epubMeta`) and converts (`kepubify`). Built from
+  [kepubify](https://github.com/pgaskin/kepubify) (MIT, see `LICENSE-kepubify`)
   compiled to WebAssembly from `wasm/main.go`.
 
 ## Rebuild the converter

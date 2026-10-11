@@ -32,6 +32,7 @@ function showCode() {
 }
 showCode();
 findHomeChannel();
+$("setup").open = !storage("sentOnce");
 
 $("code-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -60,11 +61,27 @@ function kepubName(name) {
 
 async function toKepub(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (/\.kepub\.epub$/i.test(file.name)) return bytes;
   await converterReady;
+  const meta = window.epubMeta(bytes);
+  if (/\.kepub\.epub$/i.test(file.name)) return { bytes, meta };
   const result = window.kepubify(bytes);
   if (result.error) throw new Error("This file is not a valid EPUB, so it cannot be converted.");
-  return result.data;
+  return { bytes: result.data, meta };
+}
+
+async function thumbnail(cover, type) {
+  if (!cover) return null;
+  try {
+    const image = await createImageBitmap(new Blob([cover], { type }));
+    const width = Math.min(240, image.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = Math.round((image.height / image.width) * width);
+    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.8));
+  } catch {
+    return null;
+  }
 }
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
@@ -93,41 +110,72 @@ function showWhere(ip) {
     : "Cannot find this Wi-Fi network. Books go only to Kobos with the code.";
 }
 
-async function upload(bytes, name) {
-  const to = [await findHomeChannel(), code].filter(Boolean).join(",");
-  const res = await fetch(`${API}/drop?to=${to}&name=${encodeURIComponent(name)}`, { method: "PUT", body: bytes });
-  if (res.status === 413) throw new Error("This book is larger than 25 MB, which is the limit.");
-  if (!res.ok) throw new Error(`The server refused the book (error ${res.status}). Try again in a minute.`);
+async function upload(form, onProgress) {
+  form.append("to", [await findHomeChannel(), code].filter(Boolean).join(","));
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", `${API}/drop`);
+  xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+  const status = await new Promise((resolve) => {
+    xhr.onload = () => resolve(xhr.status);
+    xhr.onerror = () => resolve(0);
+    xhr.send(form);
+  });
+  if (status === 0) throw new Error("No connection to the server. Check the internet connection and try again.");
+  if (status === 413) throw new Error("This book is larger than 25 MB, which is the limit.");
+  if (status >= 300) throw new Error(`The server refused the book (error ${status}). Try again in a minute.`);
 }
 
 function addRow(name) {
   const li = document.createElement("li");
+  const cover = document.createElement("img");
   const title = document.createElement("span");
+  const author = document.createElement("span");
   const state = document.createElement("span");
-  title.className = "name";
+  cover.className = "cover";
+  cover.alt = "";
+  title.className = "title";
+  author.className = "author";
   state.className = "state";
-  title.textContent = name.replace(/\.epub$/i, "");
-  li.append(title, state);
+  title.textContent = name.replace(/\.kepub\.epub$/i, "").replace(/\.epub$/i, "");
+  li.append(cover, title, author, state);
   $("sent").prepend(li);
-  return (text, kind) => {
-    state.textContent = text;
-    li.className = kind || "";
+  return {
+    details(meta, thumb) {
+      if (meta.title) title.textContent = meta.title;
+      if (meta.author) author.textContent = meta.author;
+      if (thumb) cover.src = URL.createObjectURL(thumb);
+    },
+    state(text, kind) {
+      state.textContent = text;
+      li.className = kind || "";
+    },
   };
 }
 
 async function send(file) {
-  const setState = addRow(file.name);
+  const row = addRow(file.name);
   try {
     if (!/\.epub$/i.test(file.name)) throw new Error("Only EPUB files can go to the Kobo from here.");
-    setState("Converting");
-    const bytes = await toKepub(file);
+    row.state("Converting");
+    const { bytes, meta } = await toKepub(file);
     if (bytes.length > MAX_BYTES) throw new Error("This book is larger than 25 MB, which is the limit.");
-    setState("Sending");
-    await upload(bytes, kepubName(file.name));
+    const thumb = await thumbnail(meta.cover, meta.coverType);
+    row.details(meta, thumb);
+
+    const form = new FormData();
+    form.append("book", new Blob([bytes], { type: "application/epub+zip" }), "book");
+    form.append("name", kepubName(file.name));
+    form.append("title", meta.title || "");
+    form.append("author", meta.author || "");
+    if (thumb) form.append("cover", thumb, "cover.jpg");
+
+    row.state("Sending");
+    await upload(form, (part) => row.state(`Sending, ${Math.round(part * 100)}%`));
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setState(`On the Kobo page, ${time}`, "done");
+    row.state(`On the Kobo page, ${time}`, "done");
+    storage("sentOnce", "1");
   } catch (err) {
-    setState(err instanceof TypeError ? "No connection to the server. Check the internet connection and try again." : err.message, "failed");
+    row.state(err.message, "failed");
   }
 }
 
