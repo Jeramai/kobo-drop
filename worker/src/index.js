@@ -1,7 +1,9 @@
 const BOOK_TTL_S = 24 * 60 * 60;
-const MAX_BYTES = 25 * 1024 * 1024;
+const PART_BYTES = 20 * 1024 * 1024;
+const MAX_PARTS = 5;
 const MAX_COVER_BYTES = 200 * 1024;
 const MAX_PER_CHANNEL = 30;
+const ID = /^[a-z0-9]{16}$/;
 const CHANNEL = /^(home-\d{1,3}(-\d{1,3}){3}|[a-z0-9]{4}-[a-z0-9]{4})$/;
 
 const CORS = {
@@ -33,31 +35,43 @@ function text(value, max) {
   return String(value || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, max);
 }
 
+async function part(request, env, id, n) {
+  const index = Number(n);
+  if (!ID.test(id) || !Number.isInteger(index) || index < 0 || index >= MAX_PARTS) return json({ error: "Bad part." }, 400);
+  if (Number(request.headers.get("content-length")) > PART_BYTES) return json({ error: "too_large" }, 413);
+  const body = await request.arrayBuffer();
+  if (body.byteLength === 0 || body.byteLength > PART_BYTES) return json({ error: "too_large" }, 413);
+  await env.BOOKS.put(`part:${id}:${index}`, body, { expirationTtl: BOOK_TTL_S });
+  return json({ ok: true }, 201);
+}
+
 async function drop(request, env) {
-  if (Number(request.headers.get("content-length")) > MAX_BYTES + MAX_COVER_BYTES + 64 * 1024) return json({ error: "too_large" }, 413);
+  if (Number(request.headers.get("content-length")) > MAX_COVER_BYTES + 64 * 1024) return json({ error: "too_large" }, 413);
   const form = await request.formData().catch(() => null);
   const to = channels(form?.get("to"));
-  const file = form?.get("book");
+  const id = String(form?.get("id") || "");
+  const parts = Number(form?.get("parts"));
   const name = text(form?.get("name"), 200).replace(/[\\/"]/g, "");
-  if (!to || !(file instanceof File) || !/\.kepub\.epub$/i.test(name)) return json({ error: "Bad channel or file." }, 400);
-  if (file.size > MAX_BYTES) return json({ error: "too_large" }, 413);
+  if (!to || !ID.test(id) || !Number.isInteger(parts) || parts < 1 || parts > MAX_PARTS || !/\.kepub\.epub$/i.test(name)) {
+    return json({ error: "Bad channel or file." }, 400);
+  }
 
   const cover = form.get("cover");
   const hasCover = cover instanceof File && cover.type === "image/jpeg" && cover.size <= MAX_COVER_BYTES;
   const book = {
-    id: crypto.randomUUID().slice(0, 12),
+    id,
+    parts,
     name,
     title: text(form.get("title"), 300),
     author: text(form.get("author"), 200),
     cover: hasCover,
-    size: file.size,
+    size: Number(form.get("size")) || 0,
     time: Date.now(),
   };
-  await env.BOOKS.put(`book:${book.id}`, await file.arrayBuffer(), { expirationTtl: BOOK_TTL_S });
-  if (hasCover) await env.BOOKS.put(`cover:${book.id}`, await cover.arrayBuffer(), { expirationTtl: BOOK_TTL_S });
+  if (hasCover) await env.BOOKS.put(`cover:${id}`, await cover.arrayBuffer(), { expirationTtl: BOOK_TTL_S });
   for (const channel of to) {
     const index = await readIndex(env, channel);
-    await env.BOOKS.put(`index:${channel}`, JSON.stringify([book, ...index].slice(0, MAX_PER_CHANNEL)));
+    await env.BOOKS.put(`index:${channel}`, JSON.stringify([book, ...index.filter((b) => b.id !== id)].slice(0, MAX_PER_CHANNEL)));
   }
   return json(book, 201);
 }
@@ -78,17 +92,31 @@ async function list(env, url) {
     .sort((a, b) => b.time - a.time)
     .map((b) => ({
       ...b,
-      url: `${url.origin}/book/${b.id}/${encodeURIComponent(b.name)}`,
+      url: `${url.origin}/book/${b.id}/${b.parts}/${encodeURIComponent(b.name)}`,
       coverUrl: b.cover ? `${url.origin}/cover/${b.id}` : null,
       expires: b.time + BOOK_TTL_S * 1000,
     }));
   return json(books);
 }
 
-async function download(env, id, name) {
-  const body = await env.BOOKS.get(`book:${id}`, "stream");
-  if (!body) return new Response("This book is no longer available. Send it again.", { status: 404, headers: CORS });
-  return new Response(body, {
+async function download(env, id, parts, name) {
+  const count = Number(parts);
+  if (!ID.test(id) || !Number.isInteger(count) || count < 1 || count > MAX_PARTS) return json({ error: "Not found." }, 404);
+  const first = await env.BOOKS.get(`part:${id}:0`, "stream");
+  if (!first) return new Response("This book is no longer available. Send it again.", { status: 404, headers: CORS });
+
+  const { readable, writable } = new TransformStream();
+  (async () => {
+    let stream = first;
+    for (let n = 0; n < count; n++) {
+      if (n > 0) stream = await env.BOOKS.get(`part:${id}:${n}`, "stream");
+      if (!stream) return writable.abort(new Error(`Part ${n} is missing.`));
+      await stream.pipeTo(writable, { preventClose: true });
+    }
+    await writable.close();
+  })();
+
+  return new Response(readable, {
     headers: {
       ...CORS,
       "content-type": "application/epub+zip",
@@ -100,11 +128,12 @@ async function download(env, id, name) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const [, route, id, name] = url.pathname.split("/");
+    const [, route, id, second, third] = url.pathname.split("/");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+    if (request.method === "POST" && route === "part" && id && second) return part(request, env, id, second);
     if (request.method === "POST" && route === "drop") return drop(request, env);
     if (request.method === "GET" && route === "list") return list(env, url);
-    if (request.method === "GET" && route === "book" && id && name) return download(env, id, name);
+    if (request.method === "GET" && route === "book" && id && second && third) return download(env, id, second, third);
     if (request.method === "GET" && route === "cover" && id) return cover(env, id);
     return json({ error: "Not found." }, 404);
   },

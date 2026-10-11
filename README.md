@@ -1,8 +1,8 @@
 # Kobo Drop
 
 Send EPUB books to a Kobo e-reader from any phone or computer. The book is converted to KEPUB
-in the browser and uploaded to a small Cloudflare Worker, which keeps it for 24 hours (25 MB per
-book, the KV value limit). The Kobo's web browser picks it up at `/k/`.
+in the browser and uploaded to a small Cloudflare Worker, which keeps it for 24 hours. KV values
+are limited to 25 MB, so books go up in 20 MB parts (at most 5, so 100 MB per book). The Kobo's web browser picks it up at `/k/`.
 
 On the same Wi-Fi no code is needed: both pages derive a shared channel from their public IPv4
 address (via ipify, icanhazip as fallback). Each send page also has a code; a Kobo that enters it

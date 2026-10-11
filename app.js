@@ -1,5 +1,6 @@
 const API = "https://kobo-drop.jeramai.workers.dev";
-const MAX_BYTES = 25 * 1024 * 1024;
+const PART_BYTES = 20 * 1024 * 1024;
+const MAX_BYTES = 5 * PART_BYTES;
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 
 const $ = (id) => document.getElementById(id);
@@ -110,19 +111,39 @@ function showWhere(ip) {
     : "Cannot find this Wi-Fi network. Books go only to Kobos with the code.";
 }
 
-async function upload(form, onProgress) {
-  form.append("to", [await findHomeChannel(), code].filter(Boolean).join(","));
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", `${API}/drop`);
-  xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-  const status = await new Promise((resolve) => {
-    xhr.onload = () => resolve(xhr.status);
-    xhr.onerror = () => resolve(0);
-    xhr.send(form);
+function post(url, body, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded);
+    xhr.onerror = () => reject(new Error("No connection to the server. Check the internet connection and try again."));
+    xhr.onload = () => {
+      if (xhr.status === 413) reject(new Error("This book is larger than 100 MB, which is the limit."));
+      else if (xhr.status >= 300) reject(new Error(`The server refused the book (error ${xhr.status}). Try again in a minute.`));
+      else resolve();
+    };
+    xhr.send(body);
   });
-  if (status === 0) throw new Error("No connection to the server. Check the internet connection and try again.");
-  if (status === 413) throw new Error("This book is larger than 25 MB, which is the limit.");
-  if (status >= 300) throw new Error(`The server refused the book (error ${status}). Try again in a minute.`);
+}
+
+function newId() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+}
+
+async function upload(bytes, form, onProgress) {
+  const id = newId();
+  const parts = Math.ceil(bytes.length / PART_BYTES);
+  for (let n = 0; n < parts; n++) {
+    const start = n * PART_BYTES;
+    await post(`${API}/part/${id}/${n}`, new Blob([bytes.subarray(start, start + PART_BYTES)]), (loaded) =>
+      onProgress((start + loaded) / bytes.length)
+    );
+  }
+  form.append("id", id);
+  form.append("parts", parts);
+  form.append("size", bytes.length);
+  form.append("to", [await findHomeChannel(), code].filter(Boolean).join(","));
+  await post(`${API}/drop`, form);
 }
 
 function addRow(name) {
@@ -158,19 +179,18 @@ async function send(file) {
     if (!/\.epub$/i.test(file.name)) throw new Error("Only EPUB files can go to the Kobo from here.");
     row.state("Converting");
     const { bytes, meta } = await toKepub(file);
-    if (bytes.length > MAX_BYTES) throw new Error("This book is larger than 25 MB, which is the limit.");
+    if (bytes.length > MAX_BYTES) throw new Error("This book is larger than 100 MB, which is the limit.");
     const thumb = await thumbnail(meta.cover, meta.coverType);
     row.details(meta, thumb);
 
     const form = new FormData();
-    form.append("book", new Blob([bytes], { type: "application/epub+zip" }), "book");
     form.append("name", kepubName(file.name));
     form.append("title", meta.title || "");
     form.append("author", meta.author || "");
     if (thumb) form.append("cover", thumb, "cover.jpg");
 
     row.state("Sending");
-    await upload(form, (part) => row.state(`Sending, ${Math.round(part * 100)}%`));
+    await upload(bytes, form, (part) => row.state(`Sending, ${Math.round(part * 100)}%`));
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     row.state(`On the Kobo page, ${time}`, "done");
     storage("sentOnce", "1");
